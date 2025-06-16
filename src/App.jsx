@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ResourceModal } from "@/components/ui/modal";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -18,7 +19,6 @@ function timeAgo(ts) {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
-
 export default function App() {
   const [filters, setFilters] = useState({
     resource_group: "",
@@ -29,11 +29,10 @@ export default function App() {
 
   const [resources, setResources] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [jsonInput, setJsonInput] = useState("");
-  const [jsonError, setJsonError] = useState(null);
   const [error, setError] = useState(null);
   const [refreshFlag, setRefreshFlag] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const handleChange = (field) => (e) =>
       setFilters((f) => ({ ...f, [field]: e.target.value }));
@@ -64,23 +63,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshFlag]);
 
-  const open = (r) => {
+  const openEditModal = (r) => {
     setSelected(r);
-    setJsonInput(JSON.stringify(r, null, 2));
-    setJsonError(null);
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
   };
-  const close = () => {
+
+  const closeEditModal = () => {
     setSelected(null);
-    setJsonInput("");
-    setJsonError(null);
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = "auto";
   };
 
-  const updateResource = async () => {
-    if (jsonError || !selected) return;
+  const openCreateModal = () => {
+    setIsCreateModalOpen(true);
+    document.body.style.overflow = "hidden";
+  };
 
-    const { resource_group, kind, namespace, name } = selected;
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false);
+    document.body.style.overflow = "auto";
+  };
+
+  const updateResource = async (resource) => {
+    if (!selected) return;
+
+    const { resource_group, kind, namespace, name } = resource;
 
     try {
       const res = await fetch(
@@ -88,23 +94,22 @@ export default function App() {
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(selected),
+            body: JSON.stringify(resource),
           }
       );
       if (!res.ok) throw new Error(`Ошибка ${res.status}`);
       const data = await res.json();
       setSelected(data);
-      setJsonInput(JSON.stringify(data, null, 2));
-      setJsonError(null);
     } catch (e) {
       setError(e.message);
     }
   };
 
   const deleteResource = async () => {
+    if (!selected) return;
+
     const { resource_group, kind, namespace, name } = selected;
 
-    // Запрос подтверждения у пользователя
     const confirmed = window.confirm(
         `Вы уверены, что хотите удалить ресурс ${name} (группа: ${resource_group}, namespace: ${namespace}, kind: ${kind})?`
     );
@@ -117,13 +122,31 @@ export default function App() {
       );
       if (!res.ok) throw new Error(`Ошибка ${res.status}`);
       setRefreshFlag((f) => f + 1);
-      close();
+      closeEditModal();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const createResource = async (resource) => {
+    const { resource_group, kind, namespace } = resource;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/groups/${resource_group}/namespaces/${namespace}/kinds/${kind}/resources/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(resource),
+      });
+      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+      setRefreshFlag((f) => f + 1);
+      closeCreateModal();
     } catch (e) {
       setError(e.message);
     }
   };
 
   const refreshResource = async () => {
+    if (!selected) return;
+
     const { resource_group, kind, namespace, name } = selected;
     try {
       const res = await fetch(
@@ -132,22 +155,8 @@ export default function App() {
       if (!res.ok) throw new Error(`Ошибка ${res.status}`);
       const data = await res.json();
       setSelected(data);
-      setJsonInput(JSON.stringify(data, null, 2));
-      setJsonError(null);
     } catch (e) {
       setError(e.message);
-    }
-  };
-
-  const handleJsonChange = (e) => {
-    const input = e.target.value;
-    setJsonInput(input);
-    try {
-      const parsed = JSON.parse(input);
-      setSelected(parsed);
-      setJsonError(null);
-    } catch (err) {
-      setJsonError("Некорректный JSON формат");
     }
   };
 
@@ -180,8 +189,7 @@ export default function App() {
         </div>
         <div className="flex-1 flex flex-col">
           <div className="p-4 flex justify-end space-x-4 border-b">
-
-            <Button onClick={() => setRefreshFlag((f) => f + 1)}>Добавить</Button>
+            <Button onClick={openCreateModal}>Добавить</Button>
             <Button onClick={() => setRefreshFlag((f) => f + 1)}>Обновить</Button>
           </div>
           {loading && <p className="p-4">Загрузка...</p>}
@@ -203,7 +211,7 @@ export default function App() {
                   <tr
                       key={`${r.resource_group}-${r.namespace}-${r.kind}-${r.name}`}
                       className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => open(r)}
+                      onClick={() => openEditModal(r)}
                   >
                     <td className="border px-4 py-1">{r.name}</td>
                     <td className="border px-4 py-1">{r.kind}</td>
@@ -217,36 +225,22 @@ export default function App() {
             </table>
           </div>
         </div>
-        {selected && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full h-[90vh] flex flex-col">
-                {/* тело модалки без собственного скролла */}
-                <div className="p-4 flex-1 flex flex-col space-y-4 min-h-0">
-                  {/* JSON-редактор */}
-                  <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                    <h3 className="text-lg font-semibold">Редактировать JSON ресурса</h3>
-                    <Button onClick={refreshResource}>Обновить данные</Button>
-
-                    <textarea
-                        className="w-full flex-1 min-h-0 p-2 border rounded font-mono text-sm
-                     resize-none overflow-auto focus:outline-none"
-                        value={jsonInput}
-                        onChange={handleJsonChange}
-                        placeholder="Введите JSON ресурса"
-                    />
-                    {jsonError && <p className="text-red-500 text-sm">{jsonError}</p>}
-                  </div>
-                </div>
-
-                {/* нижняя панель */}
-                <div className="p-4 flex justify-end space-x-2">
-                  <Button onClick={updateResource} disabled={jsonError}>Сохранить</Button>
-                  <Button variant="destructive" onClick={deleteResource}>Удалить</Button>
-                  <Button variant="secondary" onClick={close}>Отмена</Button>
-                </div>
-              </div>
-            </div>
-        )}
+        <ResourceModal
+            mode="edit"
+            isOpen={!!selected}
+            onClose={closeEditModal}
+            initialJson={selected ? JSON.stringify(selected, null, 2) : ""}
+            onSubmit={updateResource}
+            onRefresh={refreshResource}
+            onDelete={deleteResource}
+        />
+        <ResourceModal
+            mode="create"
+            isOpen={isCreateModalOpen}
+            onClose={closeCreateModal}
+            initialJson=""
+            onSubmit={createResource}
+        />
       </div>
   );
 }
