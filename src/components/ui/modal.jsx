@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
 function ResourceModal({
@@ -12,6 +12,7 @@ function ResourceModal({
                        }) {
     const [jsonInput, setJsonInput] = useState(initialJson);
     const [jsonError, setJsonError] = useState(null);
+    const modalRef = useRef(null);
 
     useEffect(() => {
         setJsonInput(initialJson);
@@ -29,6 +30,12 @@ function ResourceModal({
         }
     };
 
+    const handleOverlayClick = (e) => {
+        if (modalRef.current && !modalRef.current.contains(e.target)) {
+            onClose();
+        }
+    };
+
     const handleSubmit = () => {
         if (jsonError) return;
         try {
@@ -42,8 +49,8 @@ function ResourceModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={handleOverlayClick}>
+            <div ref={modalRef} className="bg-white rounded-2xl shadow-xl max-w-3xl w-full h-[90vh] flex flex-col">
                 <div className="p-4 flex-1 flex flex-col space-y-4 min-h-0">
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">
                         <h3 className="text-lg font-semibold">

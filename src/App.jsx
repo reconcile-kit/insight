@@ -188,7 +188,7 @@ export default function App() {
           <Button onClick={() => setRefreshFlag((f) => f + 1)}>Применить</Button>
         </div>
         <div className="flex-1 flex flex-col">
-          <div className="p-4 flex justify-end space-x-4 border-b">
+          <div className="flex justify-end space-x-4 border-b">
             <Button onClick={openCreateModal}>Добавить</Button>
             <Button onClick={() => setRefreshFlag((f) => f + 1)}>Обновить</Button>
           </div>
