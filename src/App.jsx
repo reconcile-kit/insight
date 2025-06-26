@@ -6,7 +6,7 @@ import SyntaxHighlighter from "react-syntax-highlighter";
 import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // API requests are proxied in dev and prod
-const API_BASE = "http://localhost:8080";
+const API_BASE = "http://localhost:8113";
 
 function timeAgo(ts) {
   if (!ts) return "-";
