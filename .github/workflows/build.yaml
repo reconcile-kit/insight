@@ -3,12 +3,8 @@ name: Build and Push React App to Docker Hub
 
 on:
   push:
-    branches:
-      - rseyfullin
-# on:
-#   push:
-#     tags:
-#       - 'v*'
+    tags:
+      - 'v*'
 
 env:
   REGISTRY: docker.io
