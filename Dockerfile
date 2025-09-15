@@ -11,11 +11,11 @@ COPY . ./
 RUN npm install
 
 # Build the application
-RUN npm run build && ls -la && tree
+RUN npm run build && ls -la
 
 FROM nginx:1.29-alpine
 
-COPY --from=builder /app/build/bundle /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 COPY tools/nginx.template.conf /etc/nginx/nginx.template.conf
 
 RUN chmod -R 777 /etc/nginx /var/cache/nginx /var/run
