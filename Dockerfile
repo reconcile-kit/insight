@@ -19,7 +19,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY tools/nginx.template.conf /etc/nginx/nginx.template.conf
 
 RUN chmod -R 777 /etc/nginx /var/cache/nginx /var/run
-EXPOSE 80
+EXPOSE 27182
 
 USER nginx
 
