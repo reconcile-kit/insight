@@ -10,16 +10,6 @@ COPY . ./
 # Install dependencies
 RUN npm install
 
-<<<<<<< HEAD
-# Copy the rest of the application code
-COPY . .
-
-# Accept build-time arguments
-ARG VITE_API_BASE
-ENV VITE_API_BASE=$VITE_API_BASE
-
-=======
->>>>>>> f1790372dcb9ce58a72e00068b8899692c57fd7c
 # Build the application
 RUN npm run build && ls -la
 
