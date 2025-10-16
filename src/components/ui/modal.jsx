@@ -30,7 +30,7 @@ function ResourceModal({
         }
     };
 
-    const handleOverlayClick = (e) => {
+    const handleOverlayMouseDown = (e) => {
         if (modalRef.current && !modalRef.current.contains(e.target)) {
             onClose();
         }
@@ -49,7 +49,7 @@ function ResourceModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={handleOverlayClick}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onMouseDown={handleOverlayMouseDown}>
             <div ref={modalRef} className="bg-white rounded-2xl shadow-xl max-w-3xl w-full h-[90vh] flex flex-col">
                 <div className="p-4 flex-1 flex flex-col space-y-4 min-h-0">
                     <div className="space-y-2 flex-1 flex flex-col min-h-0">

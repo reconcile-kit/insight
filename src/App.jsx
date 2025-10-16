@@ -33,11 +33,18 @@ export default function App() {
   const [refreshFlag, setRefreshFlag] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  
+  // Пагинация
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const limit = 100;
 
   const handleChange = (field) => (e) =>
       setFilters((f) => ({ ...f, [field]: e.target.value }));
 
-  const listResources = async () => {
+  const listResources = async (page = currentPage) => {
     setLoading(true);
     setError(null);
 
@@ -46,16 +53,75 @@ export default function App() {
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.append(k, v);
       });
+      
+      // Добавляем параметры пагинации
+      const offset = (page - 1) * limit;
+      params.append('limit', limit);
+      params.append('offset', offset);
 
-      const res = await fetch(`${API_BASE}/api/v1/resources?${params}`);
+      let url = `${API_BASE}/api/v1/resources?${params}`;
+      let res = await fetch(url);
+      
+      // Если API не поддерживает пагинацию (404), пробуем без параметров пагинации
+      if (!res.ok && res.status === 404) {
+        const paramsWithoutPagination = new URLSearchParams();
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v) paramsWithoutPagination.append(k, v);
+        });
+        url = `${API_BASE}/api/v1/resources?${paramsWithoutPagination}`;
+        res = await fetch(url);
+      }
+      
       if (!res.ok) throw new Error(`Ошибка ${res.status}`);
       const data = await res.json();
-      setResources(Array.isArray(data) ? data : [data]);
+      
+      // Обрабатываем ответ API
+      if (data && typeof data === 'object' && 'items' in data) {
+        // API поддерживает пагинацию
+        const items = Array.isArray(data.items) ? data.items : [];
+        const total = data.total || 0;
+        
+        setResources(items);
+        setTotalCount(total);
+        setTotalPages(Math.ceil(total / limit));
+        
+        // Определяем, есть ли следующая страница
+        const hasMore = items.length === limit;
+        setHasNextPage(hasMore);
+      } else {
+        // API не поддерживает пагинацию - показываем все данные
+        const items = Array.isArray(data) ? data : [data];
+        
+        setResources(items);
+        setTotalCount(items.length);
+        setTotalPages(1);
+        setHasNextPage(false);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Функции пагинации
+  const goToNextPage = () => {
+    const newPage = currentPage + 1;
+    setCurrentPage(newPage);
+    listResources(newPage);
+  };
+
+  const goToPrevPage = () => {
+    if (currentPage > 1) {
+      const newPage = currentPage - 1;
+      setCurrentPage(newPage);
+      listResources(newPage);
+    }
+  };
+
+  const resetPagination = () => {
+    setCurrentPage(1);
+    setRefreshFlag((f) => f + 1);
   };
 
   useEffect(() => {
@@ -185,15 +251,44 @@ export default function App() {
               value={filters.namespace}
               onChange={handleChange("namespace")}
           />
-          <Button onClick={() => setRefreshFlag((f) => f + 1)}>Применить</Button>
+          <Button onClick={resetPagination}>Применить</Button>
         </div>
         <div className="flex-1 flex flex-col">
-          <div className="flex justify-end space-x-4 border-b">
-            <Button onClick={openCreateModal}>Добавить</Button>
-            <Button onClick={() => setRefreshFlag((f) => f + 1)}>Обновить</Button>
+          <div className="flex justify-between items-center space-x-4 border-b px-4 py-2">
+            {/* Пагинация слева */}
+            <div className="flex items-center space-x-2">
+              <Button 
+                onClick={goToPrevPage} 
+                disabled={currentPage <= 1}
+                variant="outline"
+                size="sm"
+              >
+                ← Предыдущая
+              </Button>
+              <span className="text-xs text-gray-500">
+                Offset: {(currentPage - 1) * limit}
+              </span>
+              <Button 
+                onClick={goToNextPage} 
+                variant="outline"
+                size="sm"
+              >
+                Следующая →
+              </Button>
+            </div>
+            
+            {/* Индикатор загрузки и ошибок посередине */}
+            <div className="flex-1 flex justify-center">
+              {loading && <p className="text-sm text-gray-600">Загрузка...</p>}
+              {error && <p className="text-sm text-red-500">{error}</p>}
+            </div>
+            
+            {/* Кнопки справа */}
+            <div className="flex space-x-4">
+              <Button onClick={openCreateModal}>Добавить</Button>
+              <Button onClick={resetPagination}>Обновить</Button>
+            </div>
           </div>
-          {loading && <p className="p-4">Загрузка...</p>}
-          {error && <p className="p-4 text-red-500">{error}</p>}
           <div className="flex-1 overflow-auto">
             <table className="min-w-full text-sm">
               <thead className="sticky top-0 bg-gray-100">
