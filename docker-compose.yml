@@ -4,8 +4,6 @@ services:
   insight-app:
     build:
       context: .
-      args:
-        VITE_API_BASE: ${API_BASE:-https://state-manager.k8s.cloud.salt-dev.x5.ru}
     ports:
       - "3000:80"
     restart: unless-stopped
