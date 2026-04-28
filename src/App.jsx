@@ -21,6 +21,7 @@ function timeAgo(ts) {
 }
 export default function App() {
   const [filters, setFilters] = useState({
+    name: "",
     resource_group: "",
     kind: "",
     shard_id: "",
@@ -229,6 +230,11 @@ export default function App() {
   return (
       <div className="h-screen flex">
         <div className="w-64 p-4 space-y-4 bg-gray-50 border-r">
+          <Input
+              placeholder="name"
+              value={filters.name}
+              onChange={handleChange("name")}
+          />
           <Input
               placeholder="resource_group"
               value={filters.resource_group}
