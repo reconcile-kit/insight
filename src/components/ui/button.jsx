@@ -1,39 +1,37 @@
-import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
-import { cva } from "class-variance-authority";
+import React from "react";
 import { cn } from "@/lib/utils";
 
-const buttonVariants = cva(
-  "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-);
+const variants = {
+  primary:
+    "bg-accent text-accent-fg shadow-[0_1px_0_0_rgb(255_255_255/0.15)_inset,0_6px_20px_-8px_rgb(var(--accent)/0.7)] hover:brightness-110",
+  secondary: "bg-elevated text-fg border border-line hover:border-faint/60 hover:bg-line/40",
+  ghost: "text-muted hover:text-fg hover:bg-line/50",
+  danger: "bg-danger/10 text-danger border border-danger/25 hover:bg-danger/20",
+};
 
-const Button = React.forwardRef(({ className, variant, size, asChild = false, ...props }, ref) => {
-  const Comp = asChild ? Slot : "button";
+const sizes = {
+  sm: "h-8 px-2.5 text-xs gap-1.5",
+  md: "h-9 px-3.5 text-sm gap-2",
+  icon: "h-8 w-8 justify-center",
+};
+
+export const Button = React.forwardRef(function Button(
+  { className, variant = "secondary", size = "md", type = "button", ...props },
+  ref
+) {
   return (
-    <Comp
-      className={cn(buttonVariants({ variant, size, className }))}
+    <button
       ref={ref}
+      type={type}
+      className={cn(
+        "inline-flex select-none items-center whitespace-nowrap rounded-lg font-medium transition-all",
+        "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25 active:scale-[0.98]",
+        "disabled:pointer-events-none disabled:opacity-40",
+        variants[variant],
+        sizes[size],
+        className
+      )}
       {...props}
     />
   );
 });
-Button.displayName = "Button";
-
-export { Button, buttonVariants };
