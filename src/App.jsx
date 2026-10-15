@@ -12,17 +12,22 @@ import { cn, fmtNum, hue } from "@/lib/utils";
 
 const AUTO_REFRESH = [0, 5, 15, 30, 60];
 
+// Follows the system theme until the user picks one explicitly.
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    try {
-      localStorage.setItem("insight.theme", dark ? "dark" : "light");
-    } catch {
-      /* private mode */
-    }
   }, [dark]);
-  return [dark, setDark];
+  const toggle = () =>
+    setDark((d) => {
+      try {
+        localStorage.setItem("insight.theme", d ? "light" : "dark");
+      } catch {
+        /* private mode */
+      }
+      return !d;
+    });
+  return [dark, toggle];
 }
 
 /** Removable chips describing the applied filters. */
@@ -74,7 +79,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
 
 function Insight() {
   const toast = useToast();
-  const [dark, setDark] = useTheme();
+  const [dark, toggleTheme] = useTheme();
   const [applied, setApplied] = useState(readUrl);
   const [draft, setDraft] = useState(applied);
   const [result, setResult] = useState({ items: [], total: null });
@@ -273,7 +278,7 @@ function Insight() {
           <Button size="icon" variant="ghost" onClick={refresh} title="Обновить">
             <RefreshCw size={15} className={cn(loading && "animate-spin")} />
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => setDark((d) => !d)} title="Тема">
+          <Button size="icon" variant="ghost" onClick={toggleTheme} title="Тема">
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </Button>
           <div className="mx-1 h-5 w-px bg-line" />
@@ -288,10 +293,10 @@ function Insight() {
         <aside
           className={cn(
             "shrink-0 overflow-hidden border-r border-line bg-surface/40 transition-[width] duration-200",
-            sidebar ? "w-[300px]" : "w-0 border-r-0"
+            sidebar ? "w-[320px]" : "w-0 border-r-0"
           )}
         >
-          <div className="h-full w-[300px]">
+          <div className="h-full w-[320px]">
             <FilterPanel draft={draft} setDraft={setDraft} onApply={apply} onReset={clearAll} />
           </div>
         </aside>

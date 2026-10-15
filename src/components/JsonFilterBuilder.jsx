@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Plus, X, Braces, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 import { JSON_OPS, JSON_ROOTS, newJsonRow, opNeedsValue } from "@/lib/state";
 
 /** Rows of `<root>.<path> <op> <value>` conditions over jsonb columns. */
@@ -53,15 +54,16 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
       {rows.map((r) => (
         <div key={r.id} className="group relative space-y-1.5 rounded-xl border border-line bg-surface p-2">
           <div className="flex gap-1.5">
-            <select
-              className="field h-8 w-[92px] shrink-0 px-2 font-mono text-[12px]"
+            <Select
+              wrapperClassName="w-[124px]"
+              className="h-8 font-mono text-[12px]"
               value={r.root}
               onChange={(e) => update(r.id, { root: e.target.value })}
             >
               {JSON_ROOTS.map((root) => (
                 <option key={root}>{root}</option>
               ))}
-            </select>
+            </Select>
             <input
               className="field h-8 min-w-0 flex-1 font-mono text-[12.5px]"
               value={r.path}
@@ -71,8 +73,9 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
             />
           </div>
           <div className="flex gap-1.5">
-            <select
-              className="field h-8 w-[92px] shrink-0 px-2 font-mono text-[12px]"
+            <Select
+              wrapperClassName="w-[124px]"
+              className="h-8 font-mono text-[12px]"
               value={r.op}
               title={JSON_OPS.find((o) => o.op === r.op)?.hint}
               onChange={(e) => update(r.id, { op: e.target.value })}
@@ -82,7 +85,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
             {opNeedsValue(r.op) ? (
               <input
                 className="field h-8 min-w-0 flex-1 font-mono text-[12.5px]"

@@ -1,6 +1,7 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { fmtNum } from "@/lib/utils";
 import { PAGE_SIZES } from "@/lib/state";
 
@@ -17,8 +18,9 @@ export function Pagination({ page, size, total, shown, onPage, onSize }) {
         <span className="font-medium text-fg">{total == null ? "?" : fmtNum(total)}</span>
       </div>
       <div className="flex items-center gap-1">
-        <select
-          className="field mr-2 h-8 w-auto px-2 text-xs"
+        <Select
+          wrapperClassName="mr-2"
+          className="h-8 w-auto text-xs"
           value={size}
           onChange={(e) => onSize(Number(e.target.value))}
           title="Строк на странице"
@@ -28,7 +30,7 @@ export function Pagination({ page, size, total, shown, onPage, onSize }) {
               {s} / стр.
             </option>
           ))}
-        </select>
+        </Select>
         <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => onPage(1)} title="Первая">
           <ChevronsLeft size={15} />
         </Button>
