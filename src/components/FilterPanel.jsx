@@ -2,9 +2,10 @@ import React, { useState } from "react";
 import { X, Tags, HelpCircle, RotateCcw, CornerDownLeft } from "lucide-react";
 import { Suggest } from "@/components/Suggest";
 import { JsonFilterBuilder } from "@/components/JsonFilterBuilder";
+import { KindChip, GroupLabel } from "@/components/Chips";
 import { Button } from "@/components/ui/button";
 import { fetchValues } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, hue } from "@/lib/utils";
 
 const FIELDS = [
   ["resource_group", "Group"],
@@ -34,6 +35,45 @@ function Toggle({ checked, onChange, children, tone }) {
 }
 
 /**
+ * Dropdown rows look exactly like the table cells: group gets its colored dot,
+ * kind its chip colored by group+kind. A kind row is a (kind, group) pair, so
+ * picking it filters by both and the colors match what the list shows.
+ */
+function toItems(field, values, draft) {
+  if (field === "resource_group") {
+    return values.map(({ value }) => ({ value, label: <GroupLabel group={value} /> }));
+  }
+  if (field === "kind") {
+    return values.map(({ value, group }) => ({
+      key: `${group}/${value}`,
+      value,
+      group,
+      selected: value === draft.kind && group === draft.resource_group,
+      label: (
+        <span className="flex min-w-0 items-center gap-2">
+          <KindChip kind={value} group={group} className="shrink-0" />
+          <GroupLabel group={group} className="text-[11.5px] text-faint" />
+        </span>
+      ),
+    }));
+  }
+  return values.map(({ value }) => ({ value }));
+}
+
+/** Colored marker shown inside the input once a group / kind is chosen. */
+function marker(field, draft) {
+  if (field === "resource_group" && draft.resource_group) {
+    const h = hue(draft.resource_group);
+    return <span className="block h-2 w-2 rounded-full" style={{ background: `hsl(${h} 70% 58%)`, boxShadow: `0 0 0 3px hsl(${h} 70% 58% / 0.18)` }} />;
+  }
+  if (field === "kind" && draft.kind && draft.resource_group) {
+    const h = hue(`${draft.resource_group}/${draft.kind}`);
+    return <span className="block h-2.5 w-2.5 rounded-[3px]" style={{ background: `hsl(${h} 70% 58%)`, boxShadow: `0 0 0 3px hsl(${h} 70% 58% / 0.18)` }} />;
+  }
+  return null;
+}
+
+/**
  * Sidebar with all filters. It edits the draft; Enter in any field (or the
  * Apply button) applies it. Picking a value from a dropdown applies at once.
  */
@@ -57,10 +97,11 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
               value={draft[field]}
               placeholder={`Любой ${label.toLowerCase()}`}
               onChange={(v) => set({ [field]: v })}
-              onPick={(it) => onApply({ ...draft, [field]: it.value })}
-              load={(q, signal) =>
-                fetchValues(field, q, draft, signal).then((vals) => vals.map((v) => ({ value: v })))
+              icon={marker(field, draft)}
+              onPick={(it) =>
+                onApply(it.group !== undefined ? { ...draft, kind: it.value, resource_group: it.group } : { ...draft, [field]: it.value })
               }
+              load={(q, signal) => fetchValues(field, q, draft, signal).then((vals) => toItems(field, vals, draft))}
               right={
                 draft[field] && (
                   <button

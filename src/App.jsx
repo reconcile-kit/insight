@@ -31,7 +31,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
   const add = (key, label, value, h) => chips.push({ key, label, value, h });
   if (state.name) add("name", "name ~", state.name);
   if (state.resource_group) add("resource_group", "group", state.resource_group, hue(state.resource_group));
-  if (state.kind) add("kind", "kind", state.kind);
+  if (state.kind) add("kind", "kind", state.kind, state.resource_group ? hue(`${state.resource_group}/${state.kind}`) : undefined);
   if (state.namespace) add("namespace", "ns", state.namespace);
   if (state.shard_id) add("shard_id", "shard", state.shard_id);
   if (state.labels) add("labels", "labels", state.labels);

@@ -193,7 +193,8 @@ func Count(s Search) (string, []any, error) {
 }
 
 // Values builds a DISTINCT query of field, filtered by every other filter of s
-// and by a case-insensitive substring q.
+// and by a case-insensitive substring q. It selects two columns: the value and,
+// for kind, its resource_group (kinds are colored per group in the UI), else ''.
 func Values(field, q string, s Search, limit int) (string, []any, error) {
 	col, ok := ValueFields[field]
 	if !ok {
@@ -206,8 +207,12 @@ func Values(field, q string, s Search, limit int) (string, []any, error) {
 	if q = strings.TrimSpace(q); q != "" {
 		b.conds = append(b.conds, col+" ILIKE "+b.arg("%"+escapeLike(q)+"%"))
 	}
-	return "SELECT DISTINCT " + col + " FROM resources r" + b.where() +
-		" ORDER BY 1 LIMIT " + b.arg(limit), b.args, nil
+	group := "''::text"
+	if field == "kind" {
+		group = "r.resource_group"
+	}
+	return "SELECT DISTINCT " + col + ", " + group + " FROM resources r" + b.where() +
+		" ORDER BY 1, 2 LIMIT " + b.arg(limit), b.args, nil
 }
 
 // Paths builds a query listing the JSON paths found in root over a sample

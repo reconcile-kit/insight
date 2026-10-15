@@ -158,19 +158,29 @@ func (s *Store) List(ctx context.Context, req query.Search) (*ListResult, error)
 	return res, nil
 }
 
+type Value struct {
+	Value string `json:"value"`
+	// Group is set for kind values: the same kind may exist in several groups.
+	Group string `json:"group,omitempty"`
+}
+
 // Values lists distinct values of field matching the other filters.
-func (s *Store) Values(ctx context.Context, field, q string, req query.Search, limit int) ([]string, error) {
+func (s *Store) Values(ctx context.Context, field, q string, req query.Search, limit int) ([]Value, error) {
 	sq, args, err := query.Values(field, q, req, limit)
 	if err != nil {
 		return nil, &UserError{Err: err}
 	}
-	out := []string{}
+	out := []Value{}
 	err = s.readOnly(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, sq, args...)
 		if err != nil {
 			return err
 		}
-		out, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Value, error) {
+			var v Value
+			err := row.Scan(&v.Value, &v.Group)
+			return v, err
+		})
 		return err
 	})
 	return out, classify(err)

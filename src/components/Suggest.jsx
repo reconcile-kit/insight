@@ -124,7 +124,7 @@ export function Suggest({
             <ul ref={listRef} className="max-h-72 overflow-auto p-1">
               {items.map((it, i) => (
                 <li
-                  key={it.value}
+                  key={it.key ?? it.value}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     pick(it);
@@ -133,10 +133,11 @@ export function Suggest({
                   className={cn(
                     "flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-[13px]",
                     i === hl ? "bg-accent/15 text-fg" : "text-muted",
-                    it.value === value && "font-semibold text-fg"
+                    it.value === value && "font-semibold text-fg",
+                    it.selected && "ring-1 ring-inset ring-accent/40"
                   )}
                 >
-                  <span className={cn("truncate", mono && "font-mono text-[12px]")}>{it.label ?? it.value}</span>
+                  <span className={cn("min-w-0 truncate", mono && "font-mono text-[12px]")}>{it.label ?? it.value}</span>
                   {it.hint && <span className="shrink-0 font-mono text-[10px] text-faint">{it.hint}</span>}
                 </li>
               ))}

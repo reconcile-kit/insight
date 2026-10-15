@@ -151,8 +151,8 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                 </Filterable>
               </td>
               <td className="border-b border-line/60 px-3 py-1.5">
-                <div className="flex max-w-[420px] flex-wrap gap-1">
-                  {labels.slice(0, 3).map(([k, v]) => (
+                <div className="flex max-w-[420px] gap-1 overflow-hidden">
+                  {labels.slice(0, 2).map(([k, v]) => (
                     <LabelChip
                       key={k}
                       k={k}
@@ -164,12 +164,12 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                       }}
                     />
                   ))}
-                  {labels.length > 3 && (
+                  {labels.length > 2 && (
                     <span
                       className="inline-flex h-5 items-center rounded-md px-1.5 text-[10.5px] text-faint"
-                      title={labels.slice(3).map(([k, v]) => `${k}=${v}`).join("\n")}
+                      title={labels.slice(2).map(([k, v]) => `${k}=${v}`).join("\n")}
                     >
-                      +{labels.length - 3}
+                      +{labels.length - 2}
                     </span>
                   )}
                 </div>

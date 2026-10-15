@@ -171,12 +171,12 @@ func TestValuesAndPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// kind itself is ignored, namespace=ns2 applies.
-	if strings.Join(v, ",") != "Job" {
+	// kind itself is ignored, namespace=ns2 applies; kinds come with their group.
+	if len(v) != 1 || v[0] != (Value{Value: "Job", Group: "jobs.io"}) {
 		t.Fatalf("values %v", v)
 	}
 	v, _ = s.Values(ctx, "resource_group", "VM", query.Search{}, 50)
-	if strings.Join(v, ",") != "vm.io" {
+	if len(v) != 1 || v[0] != (Value{Value: "vm.io"}) {
 		t.Fatalf("values q %v", v)
 	}
 	paths, err := s.Paths(ctx, "spec", query.Search{}, 100)

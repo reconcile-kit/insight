@@ -26,7 +26,7 @@ import (
 
 type Reader interface {
 	List(ctx context.Context, req query.Search) (*store.ListResult, error)
-	Values(ctx context.Context, field, q string, req query.Search, limit int) ([]string, error)
+	Values(ctx context.Context, field, q string, req query.Search, limit int) ([]store.Value, error)
 	Paths(ctx context.Context, root string, req query.Search, sample int) ([]store.Path, error)
 	Ping(ctx context.Context) error
 }

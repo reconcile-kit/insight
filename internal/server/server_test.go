@@ -22,8 +22,8 @@ func (f *fakeDB) List(_ context.Context, s query.Search) (*store.ListResult, err
 	n := int64(0)
 	return &store.ListResult{Items: []store.Resource{}, Total: &n}, nil
 }
-func (f *fakeDB) Values(context.Context, string, string, query.Search, int) ([]string, error) {
-	return []string{"Job"}, nil
+func (f *fakeDB) Values(context.Context, string, string, query.Search, int) ([]store.Value, error) {
+	return []store.Value{{Value: "Job", Group: "g"}}, nil
 }
 func (f *fakeDB) Paths(context.Context, string, query.Search, int) ([]store.Path, error) {
 	return nil, nil
