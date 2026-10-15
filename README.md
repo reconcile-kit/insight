@@ -82,7 +82,7 @@ GRANT SELECT ON public.resources, public.labels TO insight_ro;
 docker.io/dhnikolas/insight:<версия>      # git-тег v0.3.0 → образ 0.3.0
 ```
 
-Версия с Go-бэкендом и прямым чтением из БД начинается с **0.3.0**. Этот тег ставится после мержа в `main`. Образы до `0.2.1` включительно — прежняя сборка: nginx проксирует весь `/api` в state-manager, нужен только `STATE_MANAGER_URL`, БД не используется. Список версий: [теги репозитория](https://github.com/reconcile-kit/insight/tags).
+Версия с Go-бэкендом и прямым чтением из БД начинается с **0.3.0**. Образы до `0.2.1` включительно — прежняя сборка: nginx проксирует весь `/api` в state-manager, нужен только `STATE_MANAGER_URL`, БД не используется. Список версий: [теги репозитория](https://github.com/reconcile-kit/insight/tags).
 
 Собрать самостоятельно:
 
