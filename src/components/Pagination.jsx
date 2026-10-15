@@ -1,0 +1,51 @@
+import React from "react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { fmtNum } from "@/lib/utils";
+import { PAGE_SIZES } from "@/lib/state";
+
+export function Pagination({ page, size, total, shown, onPage, onSize }) {
+  const pages = total == null ? null : Math.max(1, Math.ceil(total / size));
+  const from = shown ? (page - 1) * size + 1 : 0;
+  const to = (page - 1) * size + shown;
+  const hasNext = pages == null ? shown === size : page < pages;
+
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-line px-5 py-2 text-xs text-muted">
+      <div className="tabular-nums">
+        {fmtNum(from)}–{fmtNum(to)} <span className="text-faint">из</span>{" "}
+        <span className="font-medium text-fg">{total == null ? "?" : fmtNum(total)}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <select
+          className="field mr-2 h-8 w-auto px-2 text-xs"
+          value={size}
+          onChange={(e) => onSize(Number(e.target.value))}
+          title="Строк на странице"
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s} / стр.
+            </option>
+          ))}
+        </select>
+        <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => onPage(1)} title="Первая">
+          <ChevronsLeft size={15} />
+        </Button>
+        <Button size="icon" variant="ghost" disabled={page <= 1} onClick={() => onPage(page - 1)} title="Назад">
+          <ChevronLeft size={15} />
+        </Button>
+        <span className="px-2 tabular-nums">
+          <span className="font-medium text-fg">{page}</span>
+          {pages != null && <span className="text-faint"> / {fmtNum(pages)}</span>}
+        </span>
+        <Button size="icon" variant="ghost" disabled={!hasNext} onClick={() => onPage(page + 1)} title="Вперёд">
+          <ChevronRight size={15} />
+        </Button>
+        <Button size="icon" variant="ghost" disabled={pages == null || page >= pages} onClick={() => onPage(pages)} title="Последняя">
+          <ChevronsRight size={15} />
+        </Button>
+      </div>
+    </div>
+  );
+}

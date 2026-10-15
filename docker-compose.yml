@@ -1,9 +1,19 @@
-version: '3.8'
+# Local stand. Postgres, Redis and state-manager come from reconcile-kit/e2e-tests:
+# its docker-compose.yml is included as is (`make stand` prepares it).
+# Insight is added on top and reads the same database the state-manager writes.
+include:
+  - path: ${E2E_TESTS_DIR:-../e2e-tests}/docker-compose.yml
 
 services:
-  insight-app:
-    build:
-      context: .
+  insight:
+    build: .
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e?sslmode=disable
+      STATE_MANAGER_URL: http://state-manager:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      state-manager:
+        condition: service_started
     ports:
-      - "3000:80"
-    restart: unless-stopped
+      - "57182:27182"

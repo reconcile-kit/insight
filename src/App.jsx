@@ -1,347 +1,370 @@
-import React, { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search, Plus, RefreshCw, Sun, Moon, X, PanelLeftClose, PanelLeft, AlertTriangle, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ResourceModal } from "@/components/ui/modal";
-import SyntaxHighlighter from "react-syntax-highlighter";
-import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { FilterPanel } from "@/components/FilterPanel";
+import { ResourceTable, rowKey } from "@/components/ResourceTable";
+import { Pagination } from "@/components/Pagination";
+import { ResourceDrawer } from "@/components/ResourceDrawer";
+import { Toaster, useToast } from "@/components/Toaster";
+import { searchResources } from "@/lib/api";
+import { emptyState, readUrl, writeUrl, isJsonRowActive, JSON_OPS } from "@/lib/state";
+import { cn, fmtNum, hue } from "@/lib/utils";
 
-// API requests are proxied in dev and prod
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const AUTO_REFRESH = [0, 5, 15, 30, 60];
 
-function timeAgo(ts) {
-  if (!ts) return "-";
-  const now = Date.now();
-  const diff = now - new Date(ts).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}
-export default function App() {
-  const [filters, setFilters] = useState({
-    name: "",
-    resource_group: "",
-    kind: "",
-    shard_id: "",
-    namespace: "",
-  });
-
-  const [resources, setResources] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [error, setError] = useState(null);
-  const [refreshFlag, setRefreshFlag] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  
-  // Пагинация
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const limit = 100;
-
-  const handleChange = (field) => (e) =>
-      setFilters((f) => ({ ...f, [field]: e.target.value }));
-
-  const listResources = async (page = currentPage) => {
-    setLoading(true);
-    setError(null);
-
+function useTheme() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
     try {
-      const params = new URLSearchParams();
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.append(k, v);
+      localStorage.setItem("insight.theme", dark ? "dark" : "light");
+    } catch {
+      /* private mode */
+    }
+  }, [dark]);
+  return [dark, setDark];
+}
+
+/** Removable chips describing the applied filters. */
+function ActiveFilters({ state, onRemove, onClear }) {
+  const chips = [];
+  const add = (key, label, value, h) => chips.push({ key, label, value, h });
+  if (state.name) add("name", "name ~", state.name);
+  if (state.resource_group) add("resource_group", "group", state.resource_group, hue(state.resource_group));
+  if (state.kind) add("kind", "kind", state.kind);
+  if (state.namespace) add("namespace", "ns", state.namespace);
+  if (state.shard_id) add("shard_id", "shard", state.shard_id);
+  if (state.labels) add("labels", "labels", state.labels);
+  if (state.pending) add("pending", "pending", "");
+  if (state.deleting) add("deleting", "deleting", "");
+  state.json.filter(isJsonRowActive).forEach((r) => {
+    const op = JSON_OPS.find((o) => o.op === r.op)?.label || r.op;
+    add(`json:${r.id}`, `${r.root}${r.path ? "." + r.path : ""}`, `${op} ${r.value ?? ""}`.trim());
+  });
+  if (!chips.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
+      {state.json.filter(isJsonRowActive).length > 1 && (
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
+          json: {state.json_match === "any" ? "или" : "и"}
+        </span>
+      )}
+      {chips.map((c) => (
+        <span
+          key={c.key}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line bg-surface pl-3 pr-1 text-xs animate-in fade-in-0 zoom-in-95"
+        >
+          {c.h !== undefined && <span className="h-1.5 w-1.5 rounded-full" style={{ background: `hsl(${c.h} 70% 58%)` }} />}
+          <span className="text-faint">{c.label}</span>
+          {c.value && <span className="max-w-[280px] truncate font-mono text-[11.5px] text-fg">{c.value}</span>}
+          <button
+            onClick={() => onRemove(c.key)}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-faint hover:bg-line hover:text-fg"
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ))}
+      <button onClick={onClear} className="ml-1 text-xs text-faint hover:text-fg">
+        Сбросить всё
+      </button>
+    </div>
+  );
+}
+
+function Insight() {
+  const toast = useToast();
+  const [dark, setDark] = useTheme();
+  const [applied, setApplied] = useState(readUrl);
+  const [draft, setDraft] = useState(applied);
+  const [result, setResult] = useState({ items: [], total: null });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [tick, setTick] = useState(0);
+  const [drawer, setDrawer] = useState(null);
+  const [sidebar, setSidebar] = useState(true);
+  const [auto, setAuto] = useState(0);
+  const searchRef = useRef(null);
+
+  // Fetch on every applied change.
+  useEffect(() => {
+    writeUrl(applied);
+    const ctl = new AbortController();
+    setLoading(true);
+    searchResources(applied, ctl.signal)
+      .then((res) => {
+        setResult({ items: res.items || [], total: res.total, countError: res.count_error });
+        setError(null);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      })
+      .finally(() => {
+        if (!ctl.signal.aborted) setLoading(false);
       });
-      
-      // Добавляем параметры пагинации
-      const offset = (page - 1) * limit;
-      params.append('limit', limit);
-      params.append('offset', offset);
-
-      let url = `${API_BASE}/api/v1/resources?${params}`;
-      let res = await fetch(url);
-      
-      // Если API не поддерживает пагинацию (404), пробуем без параметров пагинации
-      if (!res.ok && res.status === 404) {
-        const paramsWithoutPagination = new URLSearchParams();
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) paramsWithoutPagination.append(k, v);
-        });
-        url = `${API_BASE}/api/v1/resources?${paramsWithoutPagination}`;
-        res = await fetch(url);
-      }
-      
-      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-      const data = await res.json();
-      
-      // Обрабатываем ответ API
-      if (data && typeof data === 'object' && 'items' in data) {
-        // API поддерживает пагинацию
-        const items = Array.isArray(data.items) ? data.items : [];
-        const total = data.total || 0;
-        
-        setResources(items);
-        setTotalCount(total);
-        setTotalPages(Math.ceil(total / limit));
-        
-        // Определяем, есть ли следующая страница
-        const hasMore = items.length === limit;
-        setHasNextPage(hasMore);
-      } else {
-        // API не поддерживает пагинацию - показываем все данные
-        const items = Array.isArray(data) ? data : [data];
-        
-        setResources(items);
-        setTotalCount(items.length);
-        setTotalPages(1);
-        setHasNextPage(false);
-      }
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Функции пагинации
-  const goToNextPage = () => {
-    const newPage = currentPage + 1;
-    setCurrentPage(newPage);
-    listResources(newPage);
-  };
-
-  const goToPrevPage = () => {
-    if (currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      listResources(newPage);
-    }
-  };
-
-  const resetPagination = () => {
-    setCurrentPage(1);
-    setRefreshFlag((f) => f + 1);
-  };
+    return () => ctl.abort();
+  }, [applied, tick]);
 
   useEffect(() => {
-    listResources();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshFlag]);
+    if (!auto) return;
+    const t = setInterval(() => setTick((x) => x + 1), auto * 1000);
+    return () => clearInterval(t);
+  }, [auto]);
 
-  const openEditModal = (r) => {
-    setSelected(r);
-    document.body.style.overflow = "hidden";
+  const refresh = useCallback(() => setTick((x) => x + 1), []);
+
+  /** Applies a full state (or the current draft) and resets to page 1. */
+  const apply = useCallback(
+    (next) => {
+      const s = { ...(next || draft), page: 1 };
+      setDraft(s);
+      setApplied(s);
+    },
+    [draft]
+  );
+
+  const patchApplied = (patch) => {
+    const s = { ...applied, ...patch, page: 1 };
+    setDraft((d) => ({ ...d, ...patch }));
+    setApplied(s);
   };
 
-  const closeEditModal = () => {
-    setSelected(null);
-    document.body.style.overflow = "auto";
+  const quickFilter = (field, value) => {
+    patchApplied({ [field]: value });
+    toast(`Фильтр: ${field} = ${value}`);
   };
 
-  const openCreateModal = () => {
-    setIsCreateModalOpen(true);
-    document.body.style.overflow = "hidden";
+  const addLabel = (term) => {
+    const parts = applied.labels ? applied.labels.split(",").map((s) => s.trim()) : [];
+    if (parts.includes(term)) return;
+    patchApplied({ labels: [...parts, term].filter(Boolean).join(", ") });
   };
 
-  const closeCreateModal = () => {
-    setIsCreateModalOpen(false);
-    document.body.style.overflow = "auto";
-  };
-
-  const updateResource = async (resource) => {
-    if (!selected) return;
-
-    const { resource_group, kind, namespace, name } = resource;
-
-    try {
-      const res = await fetch(
-          `${API_BASE}/api/v1/groups/${resource_group}/namespaces/${namespace}/kinds/${kind}/resources/${name}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(resource),
-          }
-      );
-      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-      const data = await res.json();
-      setSelected(data);
-    } catch (e) {
-      setError(e.message);
+  const removeFilter = (key) => {
+    if (key.startsWith("json:")) {
+      const id = Number(key.slice(5));
+      patchApplied({ json: applied.json.filter((r) => r.id !== id) });
+    } else {
+      patchApplied({ [key]: typeof emptyState[key] === "boolean" ? false : "" });
     }
   };
 
-  const deleteResource = async () => {
-    if (!selected) return;
-
-    const { resource_group, kind, namespace, name } = selected;
-
-    const confirmed = window.confirm(
-        `Вы уверены, что хотите удалить ресурс ${name} (группа: ${resource_group}, namespace: ${namespace}, kind: ${kind})?`
-    );
-    if (!confirmed) return;
-
-    try {
-      const res = await fetch(
-          `${API_BASE}/api/v1/groups/${resource_group}/namespaces/${namespace}/kinds/${kind}/resources/${name}`,
-          { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-      setRefreshFlag((f) => f + 1);
-      closeEditModal();
-    } catch (e) {
-      setError(e.message);
-    }
+  const clearAll = () => {
+    const s = { ...emptyState, size: applied.size, sort: applied.sort, desc: applied.desc };
+    setDraft(s);
+    setApplied(s);
   };
 
-  const createResource = async (resource) => {
-    const { resource_group, kind, namespace } = resource;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/groups/${resource_group}/namespaces/${namespace}/kinds/${kind}/resources/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(resource),
-      });
-      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-      setRefreshFlag((f) => f + 1);
-      closeCreateModal();
-    } catch (e) {
-      setError(e.message);
-    }
+  const onSort = (field) => {
+    // asc -> desc -> default order
+    if (applied.sort !== field) setApplied({ ...applied, sort: field, desc: false, page: 1 });
+    else if (!applied.desc) setApplied({ ...applied, desc: true, page: 1 });
+    else setApplied({ ...applied, sort: "", desc: false, page: 1 });
   };
 
-  const refreshResource = async () => {
-    if (!selected) return;
+  const openCreate = () =>
+    setDrawer({
+      mode: "create",
+      template: {
+        resource_group: applied.resource_group || "",
+        kind: applied.kind || "",
+        namespace: applied.namespace || "",
+        name: "",
+        shard_id: applied.shard_id || "default",
+        labels: {},
+        annotations: {},
+        spec: {},
+      },
+    });
 
-    const { resource_group, kind, namespace, name } = selected;
-    try {
-      const res = await fetch(
-          `${API_BASE}/api/v1/groups/${resource_group}/namespaces/${namespace}/kinds/${kind}/resources/${name}`
-      );
-      if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-      const data = await res.json();
-      setSelected(data);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
+  // Global shortcuts: ⌘K or / focuses search.
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing && !drawer)) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
+
+  const selected = drawer?.mode === "view" ? rowKey(drawer.id) : null;
+  const total = result.total;
+
+  const subtitle = useMemo(() => {
+    if (error) return null;
+    if (total == null) return result.countError ? "не удалось посчитать" : "…";
+    return `${fmtNum(total)} ${plural(total, ["ресурс", "ресурса", "ресурсов"])}`;
+  }, [total, error, result.countError]);
 
   return (
-      <div className="h-screen flex">
-        <div className="w-64 p-4 space-y-4 bg-gray-50 border-r">
-          <Input
-              placeholder="name"
-              value={filters.name}
-              onChange={handleChange("name")}
-          />
-          <Input
-              placeholder="resource_group"
-              value={filters.resource_group}
-              onChange={handleChange("resource_group")}
-          />
-          <Input
-              placeholder="kind"
-              value={filters.kind}
-              onChange={handleChange("kind")}
-          />
-          <Input
-              className="w-48"
-              placeholder="shard_id"
-              value={filters.shard_id}
-              onChange={handleChange("shard_id")}
-          />
-          <Input
-              className="w-48"
-              placeholder="namespace"
-              value={filters.namespace}
-              onChange={handleChange("namespace")}
-          />
-          <Button onClick={resetPagination}>Применить</Button>
-        </div>
-        <div className="flex-1 flex flex-col">
-          <div className="flex justify-between items-center space-x-4 border-b px-4 py-2">
-            {/* Пагинация слева */}
-            <div className="flex items-center space-x-2">
-              <Button 
-                onClick={goToPrevPage} 
-                disabled={currentPage <= 1}
-                variant="outline"
-                size="sm"
-              >
-                ← Предыдущая
-              </Button>
-              <span className="text-xs text-gray-500">
-                Offset: {(currentPage - 1) * limit}
-              </span>
-              <Button 
-                onClick={goToNextPage} 
-                variant="outline"
-                size="sm"
-              >
-                Следующая →
-              </Button>
-            </div>
-            
-            {/* Индикатор загрузки и ошибок посередине */}
-            <div className="flex-1 flex justify-center">
-              {loading && <p className="text-sm text-gray-600">Загрузка...</p>}
-              {error && <p className="text-sm text-red-500">{error}</p>}
-            </div>
-            
-            {/* Кнопки справа */}
-            <div className="flex space-x-4">
-              <Button onClick={openCreateModal}>Добавить</Button>
-              <Button onClick={resetPagination}>Обновить</Button>
-            </div>
+    <div className="flex h-full flex-col">
+      {/* Top bar */}
+      <header className="relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
+        <button
+          onClick={() => setSidebar((s) => !s)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-line/50 hover:text-fg"
+          title="Фильтры"
+        >
+          {sidebar ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+        </button>
+        <div className="flex items-center gap-2.5 pr-3">
+          <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-[hsl(290_80%_62%)] shadow-[0_4px_16px_-4px_rgb(var(--accent)/0.8)]">
+            <div className="h-3 w-3 rounded-full border-[2.5px] border-white" />
           </div>
-          <div className="flex-1 overflow-auto">
-            <table className="min-w-full text-sm">
-              <thead className="sticky top-0 bg-gray-100">
-              <tr>
-                <th className="px-4 py-2 text-left">Name</th>
-                <th className="px-4 py-2 text-left">Kind</th>
-                <th className="px-4 py-2 text-left">Group</th>
-                <th className="px-4 py-2 text-left">Age</th>
-                <th className="px-4 py-2 text-left">Namespace</th>
-                <th className="px-4 py-2 text-left">Shard</th>
-              </tr>
-              </thead>
-              <tbody>
-              {resources.map((r) => (
-                  <tr
-                      key={`${r.resource_group}-${r.namespace}-${r.kind}-${r.name}`}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => openEditModal(r)}
-                  >
-                    <td className="border px-4 py-1">{r.name}</td>
-                    <td className="border px-4 py-1">{r.kind}</td>
-                    <td className="border px-4 py-1">{r.resource_group}</td>
-                    <td className="border px-4 py-1">{timeAgo(r.created_at)}</td>
-                    <td className="border px-4 py-1">{r.namespace}</td>
-                    <td className="border px-4 py-1">{r.shard_id}</td>
-                  </tr>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold tracking-tight">Insight</div>
+            <div className="text-[10.5px] text-faint">reconcile-kit</div>
+          </div>
+        </div>
+
+        <form
+          className="relative max-w-xl flex-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply();
+          }}
+        >
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <input
+            ref={searchRef}
+            className="field h-9 rounded-xl bg-elevated pl-9 pr-16"
+            placeholder="Поиск по имени ресурса…"
+            value={draft.name}
+            spellCheck={false}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && draft.name) {
+                e.preventDefault();
+                apply({ ...draft, name: "" });
+              }
+            }}
+          />
+          <span className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 gap-0.5">
+            <span className="kbd">⌘</span>
+            <span className="kbd">K</span>
+          </span>
+        </form>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <label
+            className={cn(
+              "flex h-8 items-center gap-1 rounded-lg px-2 text-xs transition-colors",
+              auto ? "bg-accent/10 text-accent" : "text-muted hover:bg-line/50"
+            )}
+            title="Автообновление"
+          >
+            <Timer size={14} />
+            <select
+              className="cursor-pointer appearance-none bg-transparent text-xs outline-none"
+              value={auto}
+              onChange={(e) => setAuto(Number(e.target.value))}
+            >
+              {AUTO_REFRESH.map((s) => (
+                <option key={s} value={s}>
+                  {s ? `${s}s` : "off"}
+                </option>
               ))}
-              </tbody>
-            </table>
-          </div>
+            </select>
+          </label>
+          <Button size="icon" variant="ghost" onClick={refresh} title="Обновить">
+            <RefreshCw size={15} className={cn(loading && "animate-spin")} />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => setDark((d) => !d)} title="Тема">
+            {dark ? <Sun size={15} /> : <Moon size={15} />}
+          </Button>
+          <div className="mx-1 h-5 w-px bg-line" />
+          <Button variant="primary" size="md" onClick={openCreate}>
+            <Plus size={15} /> Создать
+          </Button>
         </div>
-        <ResourceModal
-            mode="edit"
-            isOpen={!!selected}
-            onClose={closeEditModal}
-            initialJson={selected ? JSON.stringify(selected, null, 2) : ""}
-            onSubmit={updateResource}
-            onRefresh={refreshResource}
-            onDelete={deleteResource}
-        />
-        <ResourceModal
-            mode="create"
-            isOpen={isCreateModalOpen}
-            onClose={closeCreateModal}
-            initialJson=""
-            onSubmit={createResource}
-        />
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Sidebar */}
+        <aside
+          className={cn(
+            "shrink-0 overflow-hidden border-r border-line bg-surface/40 transition-[width] duration-200",
+            sidebar ? "w-[300px]" : "w-0 border-r-0"
+          )}
+        >
+          <div className="h-full w-[300px]">
+            <FilterPanel draft={draft} setDraft={setDraft} onApply={apply} onReset={clearAll} />
+          </div>
+        </aside>
+
+        {/* Main */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-baseline gap-3 px-5 pb-3 pt-4">
+            <h1 className="text-lg font-semibold tracking-tight">Ресурсы</h1>
+            {subtitle && <span className="text-sm tabular-nums text-muted">{subtitle}</span>}
+            {loading && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
+          </div>
+          <ActiveFilters state={applied} onRemove={removeFilter} onClear={clearAll} />
+
+          {error && (
+            <div className="mx-5 mb-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-sm text-danger">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <span className="font-mono text-xs leading-relaxed">{error}</span>
+            </div>
+          )}
+
+          <div className="mx-3 mb-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <ResourceTable
+                items={result.items}
+                loading={loading}
+                sort={applied.sort}
+                desc={applied.desc}
+                onSort={onSort}
+                onFilter={quickFilter}
+                onLabel={addLabel}
+                onOpen={(r) =>
+                  setDrawer({
+                    mode: "view",
+                    id: { resource_group: r.resource_group, namespace: r.namespace, kind: r.kind, name: r.name },
+                  })
+                }
+                selected={selected}
+              />
+            </div>
+            <Pagination
+              page={applied.page}
+              size={applied.size}
+              total={total}
+              shown={result.items.length}
+              onPage={(page) => setApplied({ ...applied, page })}
+              onSize={(size) => setApplied({ ...applied, size, page: 1 })}
+            />
+          </div>
+        </main>
       </div>
+
+      <ResourceDrawer
+        target={drawer}
+        onClose={() => setDrawer(null)}
+        onChanged={refresh}
+        onOpen={(id) => setDrawer({ mode: "view", id })}
+      />
+    </div>
+  );
+}
+
+function plural(n, [one, few, many]) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+export default function App() {
+  return (
+    <Toaster>
+      <Insight />
+    </Toaster>
   );
 }
