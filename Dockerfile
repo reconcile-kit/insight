@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY index.html vite.config.js tailwind.config.js postcss.config.js ./
 COPY src ./src
+COPY public ./public
 RUN npm run build
 
 # Backend with the frontend embedded

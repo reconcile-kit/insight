@@ -6,6 +6,7 @@ import { ResourceTable, rowKey } from "@/components/ResourceTable";
 import { Pagination } from "@/components/Pagination";
 import { ResourceDrawer } from "@/components/ResourceDrawer";
 import { Toaster, useToast } from "@/components/Toaster";
+import { Logo } from "@/components/Logo";
 import { searchResources } from "@/lib/api";
 import { emptyState, readUrl, writeUrl, isJsonRowActive, JSON_OPS } from "@/lib/state";
 import { cn, fmtNum, hue } from "@/lib/utils";
@@ -217,9 +218,7 @@ function Insight() {
           {sidebar ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
         </button>
         <div className="flex items-center gap-2.5 pr-3">
-          <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-[hsl(290_80%_62%)] shadow-[0_4px_16px_-4px_rgb(var(--accent)/0.8)]">
-            <div className="h-3 w-3 rounded-full border-[2.5px] border-white" />
-          </div>
+          <Logo size={30} className="text-fg" />
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight">Insight</div>
             <div className="text-[10.5px] text-faint">reconcile-kit</div>
