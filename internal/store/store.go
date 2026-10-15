@@ -1,8 +1,12 @@
 // Package store runs read-only queries against the state-manager database.
 //
-// Writes are impossible by construction: every session is opened with
-// default_transaction_read_only=on and every query runs inside an explicit
+// Writes are impossible by construction: every query runs inside an explicit
 // READ ONLY transaction. Point it at a replica or a read-only role anyway.
+//
+// Session settings are applied inside each transaction (set_config(..., true),
+// i.e. SET LOCAL), never as connection startup parameters: poolers such as
+// PgBouncer reject unknown startup parameters, and in transaction pooling mode
+// session-level SETs would leak to other clients.
 package store
 
 import (
@@ -11,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,9 +33,32 @@ type Config struct {
 
 type Store struct {
 	pool *pgxpool.Pool
+	// statementTimeout is the value for SET LOCAL statement_timeout, "" to keep the server default.
+	statementTimeout string
 }
 
 func New(ctx context.Context, cfg Config) (*Store, error) {
+	pc, err := poolConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		return nil, err
+	}
+	s := &Store{pool: pool}
+	if cfg.StatementTimeout > 0 {
+		s.statementTimeout = strconv.FormatInt(cfg.StatementTimeout.Milliseconds(), 10)
+	}
+	return s, nil
+}
+
+// poolConfig keeps the connection usable behind poolers such as PgBouncer:
+// only startup parameters PgBouncer accepts are sent, and no named prepared
+// statements are cached on server connections (in transaction pooling the next
+// transaction may land on another server connection). A default_query_exec_mode
+// set in the DSN wins.
+func poolConfig(cfg Config) (*pgxpool.Config, error) {
 	pc, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
@@ -38,17 +66,13 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	if cfg.MaxConns > 0 {
 		pc.MaxConns = cfg.MaxConns
 	}
-	rp := pc.ConnConfig.RuntimeParams
-	rp["default_transaction_read_only"] = "on"
-	rp["application_name"] = "insight"
-	if cfg.StatementTimeout > 0 {
-		rp["statement_timeout"] = strconv.FormatInt(cfg.StatementTimeout.Milliseconds(), 10)
+	if !strings.Contains(cfg.DSN, "default_query_exec_mode") {
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 	}
-	pool, err := pgxpool.NewWithConfig(ctx, pc)
-	if err != nil {
-		return nil, err
+	if _, ok := pc.ConnConfig.RuntimeParams["application_name"]; !ok {
+		pc.ConnConfig.RuntimeParams["application_name"] = "insight"
 	}
-	return &Store{pool: pool}, nil
+	return pc, nil
 }
 
 func (s *Store) Close() { s.pool.Close() }
@@ -62,6 +86,11 @@ func (s *Store) readOnly(ctx context.Context, fn func(pgx.Tx) error) error {
 		return err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx)) //nolint:errcheck
+	if s.statementTimeout != "" {
+		if _, err := tx.Exec(ctx, "SELECT set_config('statement_timeout', $1, true)", s.statementTimeout); err != nil {
+			return err
+		}
+	}
 	return fn(tx)
 }
 

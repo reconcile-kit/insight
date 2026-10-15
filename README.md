@@ -33,11 +33,8 @@ Insight — один Go-бинарь со встроенным фронтенд�
 | Остальные `/api/*`, включая list state-manager | `404`. |
 
 - API state-manager не меняется и не получает тяжёлых запросов. Сложные фильтры выполняет insight на своей стороне.
-- Писать в БД insight не может:
-  - сессии открываются с `default_transaction_read_only=on`;
-  - каждый запрос идёт в `READ ONLY` транзакции.
-
-  Всё равно подключайте его к реплике под read-only ролью.
+- Писать в БД insight не может: каждый запрос выполняется в `READ ONLY` транзакции. Всё равно подключайте его к реплике под read-only ролью.
+- Работает напрямую с PostgreSQL и через пулеры (PgBouncer в любом `pool_mode`), см. [PgBouncer и другие пулеры](#pgbouncer-и-другие-пулеры).
 
 ### Возможности
 
@@ -70,6 +67,8 @@ CREATE ROLE insight_ro LOGIN PASSWORD '<пароль>';
 GRANT CONNECT ON DATABASE state_manager TO insight_ro;
 GRANT USAGE ON SCHEMA public TO insight_ro;
 GRANT SELECT ON public.resources, public.labels TO insight_ro;
+-- необязательно: дополнительная защита от записи на стороне сервера
+ALTER ROLE insight_ro SET default_transaction_read_only = on;
 ```
 
 Других прав не нужно.
@@ -79,10 +78,10 @@ GRANT SELECT ON public.resources, public.labels TO insight_ro;
 Образ собирается GitHub Actions при пуше тега `v*` и публикуется в Docker Hub для `linux/amd64` и `linux/arm64`:
 
 ```
-docker.io/dhnikolas/insight:<версия>      # git-тег v0.3.0 → образ 0.3.0
+docker.io/dhnikolas/insight:<версия>      # git-тег v0.3.1 → образ 0.3.1
 ```
 
-Версия с Go-бэкендом и прямым чтением из БД начинается с **0.3.0**. Образы до `0.2.1` включительно — прежняя сборка: nginx проксирует весь `/api` в state-manager, нужен только `STATE_MANAGER_URL`, БД не используется. Список версий: [теги репозитория](https://github.com/reconcile-kit/insight/tags).
+Версия с Go-бэкендом и прямым чтением из БД начинается с **0.3.0**; через PgBouncer работает начиная с **0.3.1**. Образы до `0.2.1` включительно — прежняя сборка: nginx проксирует весь `/api` в state-manager, нужен только `STATE_MANAGER_URL`, БД не используется. Список версий: [теги репозитория](https://github.com/reconcile-kit/insight/tags).
 
 Собрать самостоятельно:
 
@@ -104,7 +103,7 @@ docker run -d --name insight -p 27182:27182 \
   -e DATABASE_PASSWORD='<пароль>' \
   -e DATABASE_NAME=state_manager \
   -e DATABASE_SSLMODE=require \
-  dhnikolas/insight:0.3.0
+  dhnikolas/insight:0.3.1
 ```
 
 **Kubernetes**
@@ -131,7 +130,7 @@ spec:
     spec:
       containers:
         - name: insight
-          image: dhnikolas/insight:0.3.0
+          image: dhnikolas/insight:0.3.1
           ports:
             - containerPort: 27182
           env:
@@ -213,7 +212,15 @@ curl -s -X POST http://<insight>/insight/v1/resources/search -d '{"limit":1}'
 | `DATABASE_MAX_CONNS` | `10` | Максимум соединений к БД на один под. |
 | `DATABASE_STATEMENT_TIMEOUT` | `15s` | Предельное время одного SQL-запроса. Если подсчёт total не укладывается, список всё равно возвращается, но без total, а в UI показывается «не удалось посчитать». |
 
-В `DATABASE_URL` можно передавать любые [параметры libpq/pgx](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig), например `sslrootcert=/certs/ca.pem` или `target_session_attrs=read-only`.
+В `DATABASE_URL` можно передавать [параметры libpq/pgx](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig), например `sslrootcert=/certs/ca.pem` или `target_session_attrs=read-only`.
+
+### PgBouncer и другие пулеры
+
+Insight работает через PgBouncer в режимах `session` и `transaction`, в том числе при `max_prepared_statements = 0`:
+- при подключении передаётся только `application_name`; `statement_timeout` задаётся внутри каждой транзакции (`SET LOCAL`), поэтому `DATABASE_STATEMENT_TIMEOUT` действует и через пулер;
+- именованные подготовленные запросы не используются (pgx `QueryExecModeExec`). Переопределить можно параметром `default_query_exec_mode` в `DATABASE_URL`.
+
+Не добавляйте в `DATABASE_URL` серверные параметры вроде `search_path` или `options`: PgBouncer отклонит подключение с `unsupported startup parameter`.
 
 ## Доступ и авторизация
 
@@ -348,4 +355,6 @@ src/                фронтенд (React, Tailwind, CodeMirror)
 | Создание или сохранение возвращает `401`/`403` | В state-manager включена авторизация, а токен не передаётся. См. [Доступ и авторизация](#доступ-и-авторизация). |
 | Создание или сохранение возвращает `502 state-manager unavailable` | Неверный `STATE_MANAGER_URL` или нет сетевого доступа к state-manager. |
 | Total показывает «не удалось посчитать» | `count(*)` не уложился в `DATABASE_STATEMENT_TIMEOUT`. Сузьте фильтры или увеличьте таймаут. |
+| `/readyz` — `503`: `unsupported startup parameter: statement_timeout` (или `default_transaction_read_only`) | Insight `0.3.0` за PgBouncer. Обновитесь до `0.3.1` и не передавайте серверные параметры в `DATABASE_URL`. |
+| `prepared statement "…" does not exist` | PgBouncer в режиме `transaction` без поддержки prepared statements, а в `DATABASE_URL` задан `default_query_exec_mode=cache_statement`. Уберите этот параметр. |
 | `canceling statement due to conflict with recovery` | Запрос на реплике отменён репликацией. См. [Производительность](#производительность-на-больших-объёмах). |
