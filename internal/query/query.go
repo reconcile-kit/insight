@@ -194,7 +194,7 @@ func Count(s Search) (string, []any, error) {
 
 // Values builds a DISTINCT query of field, filtered by every other filter of s
 // and by a case-insensitive substring q. It selects two columns: the value and,
-// for kind, its resource_group (kinds are colored per group in the UI), else ''.
+// for kind, its resource_group (kinds are colored per group in the UI), else ”.
 func Values(field, q string, s Search, limit int) (string, []any, error) {
 	col, ok := ValueFields[field]
 	if !ok {
@@ -213,30 +213,4 @@ func Values(field, q string, s Search, limit int) (string, []any, error) {
 	}
 	return "SELECT DISTINCT " + col + ", " + group + " FROM resources r" + b.where() +
 		" ORDER BY 1, 2 LIMIT " + b.arg(limit), b.args, nil
-}
-
-// Paths builds a query listing the JSON paths found in root over a sample
-// of the newest documents matching s. Arrays are reported as leaves.
-func Paths(root string, s Search, sample int) (string, []any, error) {
-	if _, ok := jsonRoots[root]; !ok {
-		return "", nil, fmt.Errorf("unknown json root %q", root)
-	}
-	b := &builder{}
-	if err := b.applyFilters(&s, ""); err != nil {
-		return "", nil, err
-	}
-	q := `WITH RECURSIVE sample AS (
-	SELECT r.` + root + ` AS doc FROM resources r` + b.where() + ` ORDER BY r.id DESC LIMIT ` + b.arg(sample) + `
-), walk(path, val, depth) AS (
-	SELECT ARRAY[]::text[], doc, 0 FROM sample WHERE doc IS NOT NULL
-	UNION ALL
-	SELECT w.path || e.key, e.value, w.depth + 1
-	FROM walk w
-	CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(w.val) = 'object' THEN w.val ELSE '{}'::jsonb END) e
-	WHERE w.depth < 8
-)
-SELECT path, mode() WITHIN GROUP (ORDER BY jsonb_typeof(val)), count(*)
-FROM walk WHERE depth > 0
-GROUP BY path ORDER BY path LIMIT 2000`
-	return q, b.args, nil
 }

@@ -166,7 +166,6 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
         <JsonFilterBuilder
           rows={draft.json}
           match={draft.json_match}
-          baseState={draft}
           onChange={(json) => set({ json })}
           onMatchChange={(json_match) => set({ json_match })}
         />

@@ -1,36 +1,11 @@
-import React, { useRef } from "react";
-import { Plus, X, Braces } from "lucide-react";
-import { Suggest } from "@/components/Suggest";
+import React, { useState } from "react";
+import { Plus, X, Braces, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchPaths } from "@/lib/api";
 import { JSON_OPS, JSON_ROOTS, newJsonRow, opNeedsValue } from "@/lib/state";
 
-const typeHint = { number: "num", string: "str", boolean: "bool", object: "obj", array: "arr", null: "null" };
-
 /** Rows of `<root>.<path> <op> <value>` conditions over jsonb columns. */
-export function JsonFilterBuilder({ rows, match, onChange, onMatchChange, baseState }) {
-  // Paths are cached per root and per top-level filters (they narrow the sample).
-  const cache = useRef(new Map());
-  const baseKey = JSON.stringify([
-    baseState.resource_group,
-    baseState.kind,
-    baseState.namespace,
-    baseState.shard_id,
-  ]);
-
-  const loadPaths = async (root, q, signal) => {
-    const key = root + baseKey;
-    let paths = cache.current.get(key);
-    if (!paths) {
-      paths = await fetchPaths(root, { ...baseState, json: [], labels: "", name: "" }, signal);
-      cache.current.set(key, paths);
-    }
-    const needle = q.toLowerCase();
-    return paths
-      .filter((p) => !needle || p.path.toLowerCase().includes(needle))
-      .slice(0, 200)
-      .map((p) => ({ value: p.path, hint: `${typeHint[p.type] || p.type} · ${p.count}` }));
-  };
+export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
+  const [help, setHelp] = useState(false);
 
   const update = (id, patch) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const remove = (id) => onChange(rows.filter((r) => r.id !== id));
@@ -40,6 +15,9 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange, baseSt
       <div className="flex items-center justify-between">
         <span className="label mb-0 flex items-center gap-1.5">
           <Braces size={12} /> JSON-условия
+          <button type="button" className="text-faint hover:text-fg" onClick={() => setHelp((h) => !h)} title="Синтаксис пути">
+            <HelpCircle size={12} />
+          </button>
         </span>
         {rows.length > 1 && (
           <div className="flex rounded-md border border-line p-0.5 text-[10px] font-semibold uppercase">
@@ -63,6 +41,15 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange, baseSt
         )}
       </div>
 
+      {help && (
+        <div className="space-y-1 rounded-lg border border-line bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-muted">
+          <div><span className="text-fg">resources.cpu</span> · вложенное поле</div>
+          <div><span className="text-fg">conditions[0].type</span> · элемент массива</div>
+          <div><span className="text-fg">["app.kubernetes.io/name"]</span> · ключ с точками</div>
+          <div className="pt-1 font-sans text-faint">Пустой путь — весь {`spec/status/…`} целиком.</div>
+        </div>
+      )}
+
       {rows.map((r) => (
         <div key={r.id} className="group relative space-y-1.5 rounded-xl border border-line bg-surface p-2">
           <div className="flex gap-1.5">
@@ -75,17 +62,12 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange, baseSt
                 <option key={root}>{root}</option>
               ))}
             </select>
-            <Suggest
-              className="min-w-0 flex-1"
-              inputClassName="h-8"
-              mono
+            <input
+              className="field h-8 min-w-0 flex-1 font-mono text-[12.5px]"
               value={r.path}
-              placeholder="exit_code"
-              onChange={(path) => update(r.id, { path })}
-              onPick={(it) => update(r.id, { path: it.value })}
-              load={(q, signal) => loadPaths(r.root, q, signal)}
-              emptyText="Путей не найдено"
-              menuClassName="left-auto w-[262px]"
+              spellCheck={false}
+              placeholder="resources.cpu"
+              onChange={(e) => update(r.id, { path: e.target.value })}
             />
           </div>
           <div className="flex gap-1.5">

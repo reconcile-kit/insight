@@ -185,36 +185,3 @@ func (s *Store) Values(ctx context.Context, field, q string, req query.Search, l
 	})
 	return out, classify(err)
 }
-
-type Path struct {
-	Path  string `json:"path"`
-	Type  string `json:"type"`
-	Count int64  `json:"count"`
-}
-
-// Paths lists JSON paths of root found in a sample of matching resources.
-func (s *Store) Paths(ctx context.Context, root string, req query.Search, sample int) ([]Path, error) {
-	sq, args, err := query.Paths(root, req, sample)
-	if err != nil {
-		return nil, &UserError{Err: err}
-	}
-	out := []Path{}
-	err = s.readOnly(ctx, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, sq, args...)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var segs []string
-			var p Path
-			if err := rows.Scan(&segs, &p.Type, &p.Count); err != nil {
-				return err
-			}
-			p.Path = query.FormatPath(segs)
-			out = append(out, p)
-		}
-		return rows.Err()
-	})
-	return out, classify(err)
-}

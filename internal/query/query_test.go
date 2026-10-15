@@ -24,11 +24,6 @@ func TestParsePath(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%q: got %q want %q", in, got, want)
 		}
-		if in != "" {
-			if back, _ := ParsePath(FormatPath(got)); !reflect.DeepEqual(back, want) {
-				t.Errorf("%q: format roundtrip %q", in, FormatPath(got))
-			}
-		}
 	}
 	for _, bad := range []string{".a", "a.", "a..b", "a[x]", `a["x`, "a[0"} {
 		if _, err := ParsePath(bad); err == nil {

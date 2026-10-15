@@ -58,8 +58,6 @@ export const fetchValues = (field, q, state, signal) =>
     (r) => r.values
   );
 
-export const fetchPaths = (root, state, signal) =>
-  post("/insight/v1/paths", { root, search: toSearch(state, { page: false }) }, signal).then((r) => r.paths);
 
 const resourceUrl = ({ resource_group, namespace, kind, name }) =>
   `/api/v1/groups/${encodeURIComponent(resource_group)}/namespaces/${encodeURIComponent(namespace)}` +

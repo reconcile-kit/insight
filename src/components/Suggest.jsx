@@ -21,7 +21,6 @@ export function Suggest({
   right,
   emptyText = "Нет совпадений",
   autoFocus,
-  menuClassName,
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -115,7 +114,7 @@ export function Suggest({
       />
       {right && <span className="absolute right-1 top-1/2 -translate-y-1/2">{right}</span>}
       {open && (
-        <div className={cn("absolute left-0 right-0 top-[calc(100%+6px)] z-30", menuClassName)}><div className="overflow-hidden rounded-xl border border-line bg-elevated shadow-float animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-100">
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30"><div className="overflow-hidden rounded-xl border border-line bg-elevated shadow-float animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-100">
           {loading && items.length === 0 ? (
             <div className="px-3 py-2.5 text-xs text-faint">Загрузка…</div>
           ) : items.length === 0 ? (

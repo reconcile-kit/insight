@@ -27,7 +27,6 @@ import (
 type Reader interface {
 	List(ctx context.Context, req query.Search) (*store.ListResult, error)
 	Values(ctx context.Context, field, q string, req query.Search, limit int) ([]store.Value, error)
-	Paths(ctx context.Context, root string, req query.Search, sample int) ([]store.Path, error)
 	Ping(ctx context.Context) error
 }
 
@@ -58,7 +57,9 @@ func New(cfg Config, db Reader) http.Handler {
 	r.Route("/insight/v1", func(r chi.Router) {
 		r.Post("/resources/search", h.search)
 		r.Post("/values", h.values)
-		r.Post("/paths", h.paths)
+		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown insight method"})
+		})
 	})
 
 	// Only the single-resource routes of state-manager are exposed; its list
@@ -112,27 +113,6 @@ func (h *handlers) values(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"values": vals})
-}
-
-type pathsReq struct {
-	Root   string       `json:"root"`
-	Search query.Search `json:"search"`
-}
-
-func (h *handlers) paths(w http.ResponseWriter, r *http.Request) {
-	var req pathsReq
-	if !decode(w, r, &req) {
-		return
-	}
-	// JSON filters do not narrow the sample: suggestions should not
-	// disappear while the user is still editing a filter.
-	req.Search.JSON = nil
-	paths, err := h.db.Paths(r.Context(), req.Root, req.Search, 300)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"paths": paths})
 }
 
 func (h *handlers) fail(w http.ResponseWriter, r *http.Request, err error) {

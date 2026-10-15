@@ -164,7 +164,7 @@ func TestPageSortLabels(t *testing.T) {
 	}
 }
 
-func TestValuesAndPaths(t *testing.T) {
+func TestValues(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()
 	v, err := s.Values(ctx, "kind", "", query.Search{Filters: query.Filters{Kind: "VM", Namespace: "ns2"}}, 50)
@@ -178,21 +178,6 @@ func TestValuesAndPaths(t *testing.T) {
 	v, _ = s.Values(ctx, "resource_group", "VM", query.Search{}, 50)
 	if len(v) != 1 || v[0] != (Value{Value: "vm.io"}) {
 		t.Fatalf("values q %v", v)
-	}
-	paths, err := s.Paths(ctx, "spec", query.Search{}, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, p := range paths {
-		got = append(got, p.Path+":"+p.Type)
-	}
-	if strings.Join(got, " ") != "cpu:number disks:array image:string replicas:number" {
-		t.Fatalf("paths %v", got)
-	}
-	ap, _ := s.Paths(ctx, "annotations", query.Search{}, 100)
-	if len(ap) != 1 || ap[0].Path != `["app.kubernetes.io/name"]` {
-		t.Fatalf("annotation paths %+v", ap)
 	}
 }
 

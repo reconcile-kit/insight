@@ -25,9 +25,6 @@ func (f *fakeDB) List(_ context.Context, s query.Search) (*store.ListResult, err
 func (f *fakeDB) Values(context.Context, string, string, query.Search, int) ([]store.Value, error) {
 	return []store.Value{{Value: "Job", Group: "g"}}, nil
 }
-func (f *fakeDB) Paths(context.Context, string, query.Search, int) ([]store.Path, error) {
-	return nil, nil
-}
 func (f *fakeDB) Ping(context.Context) error { return nil }
 
 func TestRouting(t *testing.T) {
@@ -72,6 +69,9 @@ func TestRouting(t *testing.T) {
 	}
 	if len(proxied) != 4 || proxied[0] != "GET /api/v1/groups/g/namespaces/n/kinds/k/resources/x" {
 		t.Fatalf("proxied %v", proxied)
+	}
+	if rec := do("POST", "/insight/v1/paths", "{}"); rec.Code != 404 {
+		t.Fatalf("removed method must be 404: %d", rec.Code)
 	}
 	if rec := do("GET", "/some/client/route", ""); !strings.Contains(rec.Body.String(), "spa") {
 		t.Fatalf("spa fallback: %s", rec.Body)

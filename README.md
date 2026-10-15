@@ -8,7 +8,7 @@ Insight собирается в один Go-бинарь, в который вс
 
 | Запрос | Куда идёт |
 |---|---|
-| `POST /insight/v1/resources/search`, `/values`, `/paths` | Напрямую в PostgreSQL, **только чтение**. |
+| `POST /insight/v1/resources/search`, `/values` | Напрямую в PostgreSQL, **только чтение**. |
 | `GET /api/v1/groups/.../resources/{name}` и все `POST/PUT/DELETE` | Проксируются в state-manager без изменений. |
 | Остальные `/api/*`, включая list state-manager | `404`. |
 
@@ -28,8 +28,7 @@ Insight собирается в один Go-бинарь, в который вс
 - Конструктор условий по jsonb (`spec`, `status`, `annotations`, `finalizers`):
   - операторы `= ≠ > ≥ < ≤ contains !contains regex in exists !exists`;
   - объединение условий через И / ИЛИ;
-  - пути вида `a.b[0].c` и `["app.kubernetes.io/name"]`;
-  - подсказки путей по выборке документов.
+  - путь вводится вручную: `resources.cpu`, `conditions[0].type`, `["app.kubernetes.io/name"]`.
 - Общее количество найденных ресурсов. Серверная сортировка по клику на заголовок колонки. Пагинация.
 - Клик по иконке-фильтру в ячейке kind, group, namespace или shard и по чипу label добавляет фильтр. `Enter` в любом поле применяет фильтры.
 - Ресурс открывается в боковой панели. Тело при каждом открытии заново загружается из state-manager.

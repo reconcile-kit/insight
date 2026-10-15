@@ -3,7 +3,6 @@ package query
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -114,27 +113,6 @@ func ParsePath(p string) ([]string, error) {
 		}
 	}
 	return segs, nil
-}
-
-var plainKey = regexp.MustCompile(`^[A-Za-z0-9_\-]+$`)
-
-// FormatPath is the inverse of ParsePath.
-func FormatPath(segs []string) string {
-	var sb strings.Builder
-	for i, s := range segs {
-		if plainKey.MatchString(s) {
-			if i > 0 {
-				sb.WriteByte('.')
-			}
-			sb.WriteString(s)
-			continue
-		}
-		q, _ := json.Marshal(s)
-		sb.WriteByte('[')
-		sb.Write(q)
-		sb.WriteByte(']')
-	}
-	return sb.String()
 }
 
 // literal returns the value both as a jsonb literal and as the text that
