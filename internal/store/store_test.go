@@ -2,12 +2,15 @@ package store
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/reconcile-kit/insight/internal/query"
 )
@@ -52,6 +55,12 @@ INSERT INTO labels (resource_id, name, value) VALUES
 
 func setup(t *testing.T) *Store {
 	t.Helper()
+	return setupWith(t, Config{})
+}
+
+// setupWith loads the fixture and opens a Store with cfg (its DSN is filled in).
+func setupWith(t *testing.T, cfg Config) *Store {
+	t.Helper()
 	// e.g. the e2e-tests stand: postgres://e2e:e2e@localhost:55432/e2e?sslmode=disable
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -77,7 +86,8 @@ func setup(t *testing.T) *Store {
 	if strings.Contains(dsn, "?") {
 		sep = "&"
 	}
-	s, err := New(ctx, Config{DSN: dsn + sep + "search_path=" + testSchema})
+	cfg.DSN = dsn + sep + "search_path=" + testSchema
+	s, err := New(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,16 +207,65 @@ func asUser(err error, target **UserError) bool {
 }
 
 func TestWritesAreRejected(t *testing.T) {
-	s := setup(t)
+	s := setupWith(t, Config{StatementTimeout: 5 * time.Second})
 	ctx := context.Background()
-	if _, err := s.pool.Exec(ctx, `DELETE FROM resources`); err == nil || !strings.Contains(err.Error(), "read-only") {
-		t.Fatalf("expected read-only error, got %v", err)
+	for _, q := range []string{
+		`DELETE FROM resources`,
+		`WITH d AS (DELETE FROM resources RETURNING 1) SELECT count(*) FROM d`,
+	} {
+		err := s.readOnly(ctx, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, q)
+			return err
+		})
+		if err == nil || !strings.Contains(err.Error(), "read-only") {
+			t.Fatalf("%s: expected read-only error, got %v", q, err)
+		}
 	}
+}
+
+func TestStatementTimeout(t *testing.T) {
+	s := setupWith(t, Config{StatementTimeout: 300 * time.Millisecond})
+	ctx := context.Background()
 	err := s.readOnly(ctx, func(tx pgx.Tx) error {
-		var n int
-		return tx.QueryRow(ctx, `WITH d AS (DELETE FROM resources RETURNING 1) SELECT count(*) FROM d`).Scan(&n)
+		_, err := tx.Exec(ctx, `SELECT pg_sleep(2)`)
+		return err
 	})
-	if err == nil || !strings.Contains(err.Error(), "read-only") {
-		t.Fatalf("expected read-only error, got %v", err)
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) || pe.Code != "57014" {
+		t.Fatalf("expected query_canceled (57014), got %v", err)
+	}
+	// The timeout is transaction-local and must not stick to the pooled connection.
+	var v string
+	if err := s.pool.QueryRow(ctx, `SHOW statement_timeout`).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v != "0" {
+		t.Fatalf("statement_timeout leaked to the session: %q", v)
+	}
+}
+
+// Poolers such as PgBouncer reject unknown startup parameters
+// ("unsupported startup parameter: statement_timeout").
+func TestOnlyPoolerSafeStartupParams(t *testing.T) {
+	pc, err := poolConfig(Config{DSN: "postgres://u:p@pgbouncer:5000/db", StatementTimeout: 15 * time.Second, MaxConns: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pc.ConnConfig.RuntimeParams; len(got) != 1 || got["application_name"] != "insight" {
+		t.Fatalf("startup params %v, want only application_name", got)
+	}
+	if pc.MaxConns != 3 {
+		t.Fatalf("max conns %d", pc.MaxConns)
+	}
+	if pc.ConnConfig.DefaultQueryExecMode != pgx.QueryExecModeExec {
+		t.Fatalf("exec mode %v, want QueryExecModeExec (no cached prepared statements)", pc.ConnConfig.DefaultQueryExecMode)
+	}
+	pc, _ = poolConfig(Config{DSN: "postgres://u:p@h/db?default_query_exec_mode=simple_protocol"})
+	if pc.ConnConfig.DefaultQueryExecMode != pgx.QueryExecModeSimpleProtocol {
+		t.Fatalf("exec mode from DSN must win: %v", pc.ConnConfig.DefaultQueryExecMode)
+	}
+	pc, _ = poolConfig(Config{DSN: "postgres://u:p@h/db?application_name=custom"})
+	if pc.ConnConfig.RuntimeParams["application_name"] != "custom" {
+		t.Fatalf("application_name from DSN must win: %v", pc.ConnConfig.RuntimeParams)
 	}
 }
