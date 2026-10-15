@@ -51,7 +51,7 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
             <th
               key={c.key}
               className={cn(
-                "whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-faint first:pl-5",
+                "whitespace-nowrap border-b border-line px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted first:pl-5",
                 c.w,
                 c.right && "text-right"
               )}

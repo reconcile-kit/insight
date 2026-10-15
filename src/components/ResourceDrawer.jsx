@@ -12,7 +12,7 @@ const pretty = (v) => JSON.stringify(v, null, 2);
 function Meta({ label, children, title }) {
   return (
     <div className="min-w-0" title={title}>
-      <div className="text-[10.5px] uppercase tracking-wider text-faint">{label}</div>
+      <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">{label}</div>
       <div className="mt-0.5 truncate text-[13px] text-fg">{children}</div>
     </div>
   );

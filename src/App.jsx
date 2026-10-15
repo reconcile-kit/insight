@@ -51,7 +51,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
       {state.json.filter(isJsonRowActive).length > 1 && (
-        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
           json: {state.json_match === "any" ? "или" : "и"}
         </span>
       )}
