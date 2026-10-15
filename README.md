@@ -79,8 +79,10 @@ GRANT SELECT ON public.resources, public.labels TO insight_ro;
 Образ собирается GitHub Actions при пуше тега `v*` и публикуется в Docker Hub для `linux/amd64` и `linux/arm64`:
 
 ```
-docker.io/dhnikolas/insight:<версия>      # тег v2.0.0 → 2.0.0
+docker.io/dhnikolas/insight:<версия>      # git-тег v0.3.0 → образ 0.3.0
 ```
+
+Версия с Go-бэкендом и прямым чтением из БД начинается с **0.3.0**. Этот тег ставится после мержа в `main`. Образы до `0.2.1` включительно — прежняя сборка: nginx проксирует весь `/api` в state-manager, нужен только `STATE_MANAGER_URL`, БД не используется. Список версий: [теги репозитория](https://github.com/reconcile-kit/insight/tags).
 
 Собрать самостоятельно:
 
@@ -102,7 +104,7 @@ docker run -d --name insight -p 27182:27182 \
   -e DATABASE_PASSWORD='<пароль>' \
   -e DATABASE_NAME=state_manager \
   -e DATABASE_SSLMODE=require \
-  dhnikolas/insight:2.0.0
+  dhnikolas/insight:0.3.0
 ```
 
 **Kubernetes**
@@ -129,7 +131,7 @@ spec:
     spec:
       containers:
         - name: insight
-          image: dhnikolas/insight:2.0.0
+          image: dhnikolas/insight:0.3.0
           ports:
             - containerPort: 27182
           env:
