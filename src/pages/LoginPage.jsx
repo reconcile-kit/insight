@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, LogIn, LogOut } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { fetchMe } from "@/lib/auth";
@@ -32,6 +32,7 @@ const SYNCED = 0;
 const PENDING = 1; // spec changed: version > current_version
 const RECONCILING = 2; // a controller is on it
 const DELETING = 3;
+const READY = 4; // just converged, shown green for a moment
 
 const TILE = 22; // px, including the gap
 
@@ -96,7 +97,8 @@ function ResourceMap() {
           const t = next[i];
           const age = now - t.since;
           if (t.state === PENDING && age > 1600 + (i % 7) * 300) next[i] = { ...t, state: RECONCILING, since: now };
-          else if (t.state === RECONCILING && age > 1400 + (i % 5) * 350) next[i] = { ...t, state: SYNCED, since: now };
+          else if (t.state === RECONCILING && age > 1400 + (i % 5) * 350) next[i] = { ...t, state: READY, since: now };
+          else if (t.state === READY && age > 1300) next[i] = { ...t, state: SYNCED, since: now };
           else if (t.state === DELETING && age > 2600) next[i] = { ...t, empty: true, state: SYNCED, since: now };
         }
         return next;
@@ -104,18 +106,6 @@ function ResourceMap() {
     }, 600);
     return () => clearInterval(id);
   }, []);
-
-  const stats = useMemo(() => {
-    const s = { total: 0, pending: 0, reconciling: 0, deleting: 0 };
-    for (const t of tiles) {
-      if (t.empty) continue;
-      s.total++;
-      if (t.state === PENDING) s.pending++;
-      if (t.state === RECONCILING) s.reconciling++;
-      if (t.state === DELETING) s.deleting++;
-    }
-    return s;
-  }, [tiles]);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -140,12 +130,7 @@ function ResourceMap() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgb(var(--bg))_85%)]" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pt-5 font-mono text-[12px] text-muted">
-        <Stat label="resources" value={stats.total} />
-        <Stat label="pending" value={stats.pending} dot="rgb(var(--warn))" />
-        <Stat label="reconciling" value={stats.reconciling} dot="rgb(var(--accent))" />
-        <Stat label="deleting" value={stats.deleting} dot="rgb(var(--danger))" />
-      </div>
+      <PhaseTicker />
     </div>
   );
 }
@@ -157,6 +142,8 @@ function tileStyle(t) {
       return { background: "rgb(var(--warn) / 0.85)", boxShadow: "0 0 14px rgb(var(--warn) / 0.45)" };
     case RECONCILING:
       return { background: "rgb(var(--accent))", boxShadow: "0 0 16px rgb(var(--accent) / 0.55)" };
+    case READY:
+      return { background: "rgb(var(--ok))", boxShadow: "0 0 16px rgb(var(--ok) / 0.55)" };
     case DELETING:
       return { background: "rgb(var(--danger) / 0.75)", transform: "scale(0.7)" };
     default:
@@ -167,13 +154,45 @@ function tileStyle(t) {
   }
 }
 
-function Stat({ label, value, dot }) {
+// The phases of the reconcile loop, lit one at a time. Illustrative only:
+// no numbers, so nobody mistakes the demo map for real data.
+const PHASES = [
+  { word: "pending", color: "rgb(var(--warn))" },
+  { word: "reconciling", color: "rgb(var(--accent))" },
+  { word: "ready", color: "rgb(var(--ok))" },
+  { word: "deleting", color: "rgb(var(--danger))" },
+];
+
+function PhaseTicker() {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => setActive((a) => (a + 1) % PHASES.length), 2200);
+    return () => clearInterval(id);
+  }, []);
+
   return (
-    <span className="flex items-center gap-2">
-      {dot && <span className="h-2 w-2 rounded-full" style={{ background: dot }} />}
-      <span className="tabular-nums text-fg">{value}</span>
-      {label}
-    </span>
+    <div className="flex flex-wrap items-center gap-x-7 gap-y-2 px-1 pt-5 font-mono text-[12px]" aria-hidden="true">
+      {PHASES.map((p, i) => {
+        const on = i === active;
+        return (
+          <span
+            key={p.word}
+            className={cn(
+              "flex items-center gap-2 transition-all duration-700",
+              on ? "text-fg opacity-100 blur-0" : "text-muted opacity-35 blur-[1.5px]"
+            )}
+          >
+            <span
+              className="h-2 w-2 rounded-full transition-all duration-700"
+              style={{ background: on ? p.color : "rgb(var(--faint))", boxShadow: on ? `0 0 10px ${p.color}` : "none" }}
+            />
+            {p.word}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
