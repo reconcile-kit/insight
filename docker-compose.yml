@@ -10,6 +10,9 @@ services:
     environment:
       DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e?sslmode=disable
       STATE_MANAGER_URL: http://state-manager:8080
+      # Local-only MCP tokens, see README "MCP for AI agents".
+      MCP_READ_TOKEN: local-read-token-0000
+      MCP_WRITE_TOKEN: local-write-token-0000
     depends_on:
       postgres:
         condition: service_healthy

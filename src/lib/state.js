@@ -63,18 +63,18 @@ export const newJsonRow = () => ({ id: ++rowId, root: "status", path: "", op: "e
 export const JSON_ROOTS = ["spec", "status", "annotations", "finalizers"];
 
 export const JSON_OPS = [
-  { op: "eq", label: "=", hint: "равно" },
-  { op: "ne", label: "≠", hint: "не равно (поле есть)" },
-  { op: "gt", label: ">", hint: "больше" },
-  { op: "gte", label: "≥", hint: "больше или равно" },
-  { op: "lt", label: "<", hint: "меньше" },
-  { op: "lte", label: "≤", hint: "меньше или равно" },
-  { op: "contains", label: "contains", hint: "содержит подстроку" },
-  { op: "not_contains", label: "!contains", hint: "не содержит" },
-  { op: "matches", label: "regex", hint: "регулярное выражение (без учёта регистра)" },
-  { op: "in", label: "in", hint: "одно из значений через запятую" },
-  { op: "exists", label: "exists", hint: "поле существует" },
-  { op: "not_exists", label: "!exists", hint: "поля нет" },
+  { op: "eq", label: "=", hint: "equals" },
+  { op: "ne", label: "≠", hint: "not equal (field present)" },
+  { op: "gt", label: ">", hint: "greater than" },
+  { op: "gte", label: "≥", hint: "greater or equal" },
+  { op: "lt", label: "<", hint: "less than" },
+  { op: "lte", label: "≤", hint: "less or equal" },
+  { op: "contains", label: "contains", hint: "contains substring" },
+  { op: "not_contains", label: "!contains", hint: "does not contain" },
+  { op: "matches", label: "regex", hint: "regular expression (case-insensitive)" },
+  { op: "in", label: "in", hint: "one of comma-separated values" },
+  { op: "exists", label: "exists", hint: "field exists" },
+  { op: "not_exists", label: "!exists", hint: "field is missing" },
 ];
 
 export const opNeedsValue = (op) => op !== "exists" && op !== "not_exists";

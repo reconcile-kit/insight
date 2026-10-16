@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { JsonEditor } from "@/components/JsonEditor";
 import { KindChip, GroupLabel, LabelChip } from "@/components/Chips";
 import { useToast } from "@/components/Toaster";
+import { useAuth, can } from "@/lib/auth";
 import { getResource, updateResource, createResource, deleteResource } from "@/lib/api";
 import { cn, fmtDate, timeAgo } from "@/lib/utils";
 
@@ -25,6 +26,9 @@ function Meta({ label, children, title }) {
  */
 export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
   const toast = useToast();
+  const { access } = useAuth();
+  const canWrite = can(access, "write");
+  const canDelete = can(access, "admin");
   const isCreate = target?.mode === "create";
   const [data, setData] = useState(null);
   const [text, setText] = useState("");
@@ -79,7 +83,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
   const dirty = text !== loadedText.current;
 
   const close = useCallback(() => {
-    if (dirty && !isCreate && !window.confirm("Есть несохранённые изменения. Закрыть?")) return;
+    if (dirty && !isCreate && !window.confirm("You have unsaved changes. Close anyway?")) return;
     onClose();
   }, [dirty, isCreate, onClose]);
 
@@ -96,7 +100,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
     try {
       return JSON.parse(text);
     } catch (e) {
-      toast(`Некорректный JSON: ${e.message}`, "error");
+      toast(`Invalid JSON: ${e.message}`, "error");
       return null;
     }
   };
@@ -108,7 +112,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
     try {
       if (isCreate) {
         const created = await createResource(body);
-        toast(`Ресурс ${body.name} создан`);
+        toast(`Resource ${body.name} created`);
         onChanged();
         const r = created && created.name ? created : body;
         onOpen({ resource_group: r.resource_group, namespace: r.namespace, kind: r.kind, name: r.name });
@@ -121,7 +125,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
         } else {
           await load();
         }
-        toast("Сохранено");
+        toast("Saved");
         onChanged();
       }
     } catch (e) {
@@ -139,7 +143,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
     }
     try {
       await deleteResource(id);
-      toast(`Ресурс ${id.name} удалён`);
+      toast(`Resource ${id.name} deleted`);
       onChanged();
       onClose();
     } catch (e) {
@@ -153,7 +157,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast("Не удалось скопировать", "error");
+      toast("Could not copy", "error");
     }
   };
 
@@ -170,7 +174,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
           <div className="min-w-0 flex-1">
             {isCreate ? (
               <div className="flex items-center gap-2 text-base font-semibold">
-                <Plus size={16} className="text-accent" /> Новый ресурс
+                <Plus size={16} className="text-accent" /> New resource
               </div>
             ) : (
               <>
@@ -187,20 +191,20 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
           <div className="flex items-center gap-1">
             {!isCreate && (
               <>
-                <Button size="icon" variant="ghost" onClick={copy} title="Копировать JSON">
+                <Button size="icon" variant="ghost" onClick={copy} title="Copy JSON">
                   {copied ? <Check size={15} className="text-ok" /> : <Copy size={15} />}
                 </Button>
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => (!dirty || window.confirm("Отменить изменения и перезагрузить?")) && load()}
-                  title="Перезагрузить из state-manager"
+                  onClick={() => (!dirty || window.confirm("Discard changes and reload?")) && load()}
+                  title="Reload from state-manager"
                 >
                   <RefreshCw size={15} className={cn(loading && "animate-spin")} />
                 </Button>
               </>
             )}
-            <Button size="icon" variant="ghost" onClick={close} title="Закрыть (Esc)">
+            <Button size="icon" variant="ghost" onClick={close} title="Close (Esc)">
               <X size={16} />
             </Button>
           </div>
@@ -219,16 +223,16 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
                 </span>
               </Meta>
               <Meta label="Created" title={fmtDate(data.created_at)}>
-                {timeAgo(data.created_at)} <span className="text-faint">назад</span>
+                {timeAgo(data.created_at)} <span className="text-faint">ago</span>
               </Meta>
               <Meta label="Updated" title={fmtDate(data.updated_at)}>
-                {timeAgo(data.updated_at)} <span className="text-faint">назад</span>
+                {timeAgo(data.updated_at)} <span className="text-faint">ago</span>
               </Meta>
             </div>
             {data.deletion_timestamp && (
               <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
-                <AlertTriangle size={13} /> Помечен на удаление {fmtDate(data.deletion_timestamp)}
-                {data.finalizers?.length > 0 && <span className="text-danger/80">· ждёт финализаторы: {data.finalizers.join(", ")}</span>}
+                <AlertTriangle size={13} /> Marked for deletion {fmtDate(data.deletion_timestamp)}
+                {data.finalizers?.length > 0 && <span className="text-danger/80">· waiting for finalizers: {data.finalizers.join(", ")}</span>}
               </div>
             )}
             {labels.length > 0 && (
@@ -244,37 +248,44 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
         <div className="relative min-h-0 flex-1 bg-bg/40">
           {loading && !data && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">
-              <Loader2 size={18} className="mr-2 animate-spin" /> Загрузка из state-manager…
+              <Loader2 size={18} className="mr-2 animate-spin" /> Loading from state-manager…
             </div>
           )}
           {error && (
             <div className="m-5 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
               <div className="mb-1 flex items-center gap-2 font-medium">
-                <AlertTriangle size={15} /> Не удалось загрузить ресурс
+                <AlertTriangle size={15} /> Could not load the resource
               </div>
               <div className="font-mono text-xs opacity-90">{error}</div>
             </div>
           )}
-          {(data || isCreate) && <JsonEditor value={text} onChange={setText} onSave={save} />}
+          {(data || isCreate) && (
+            <JsonEditor value={text} onChange={setText} onSave={canWrite ? save : undefined} readOnly={!canWrite} />
+          )}
         </div>
 
         <footer className="flex items-center gap-2 border-t border-line px-5 py-3">
-          {!isCreate && (
+          {!isCreate && canDelete && (
             <Button variant="danger" onClick={remove} disabled={!data}>
-              <Trash2 size={14} /> {confirmDelete ? "Точно удалить?" : "Удалить"}
+              <Trash2 size={14} /> {confirmDelete ? "Really delete?" : "Delete"}
             </Button>
           )}
           <div className="flex-1 text-xs text-faint">
-            {dirty && !isCreate && <span className="text-warn">● Изменено</span>}
+            {dirty && !isCreate && <span className="text-warn">● Modified</span>}
+            {!canWrite && <span>Read only</span>}
           </div>
-          <span className="hidden items-center gap-1 text-xs text-faint sm:flex">
-            <span className="kbd">⌘</span>
-            <span className="kbd">S</span>
-          </span>
-          <Button variant="primary" onClick={save} disabled={saving || (!isCreate && (!data || !dirty))}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {isCreate ? "Создать" : "Сохранить"}
-          </Button>
+          {canWrite && (
+            <>
+              <span className="hidden items-center gap-1 text-xs text-faint sm:flex">
+                <span className="kbd">⌘</span>
+                <span className="kbd">S</span>
+              </span>
+              <Button variant="primary" onClick={save} disabled={saving || (!isCreate && (!data || !dirty))}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {isCreate ? "Create" : "Save"}
+              </Button>
+            </>
+          )}
         </footer>
       </aside>
     </div>

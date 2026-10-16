@@ -19,7 +19,7 @@ export function Suggest({
   mono,
   icon,
   right,
-  emptyText = "Нет совпадений",
+  emptyText = "No matches",
   autoFocus,
 }) {
   const [open, setOpen] = useState(false);
@@ -116,7 +116,7 @@ export function Suggest({
       {open && (
         <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30"><div className="overflow-hidden rounded-xl border border-line bg-elevated shadow-float animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-100">
           {loading && items.length === 0 ? (
-            <div className="px-3 py-2.5 text-xs text-faint">Загрузка…</div>
+            <div className="px-3 py-2.5 text-xs text-faint">Loading…</div>
           ) : items.length === 0 ? (
             <div className="px-3 py-2.5 text-xs text-faint">{emptyText}</div>
           ) : (

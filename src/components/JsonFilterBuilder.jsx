@@ -15,16 +15,16 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="label mb-0 flex items-center gap-1.5">
-          <Braces size={12} /> JSON-условия
-          <button type="button" className="text-faint hover:text-fg" onClick={() => setHelp((h) => !h)} title="Синтаксис пути">
+          <Braces size={12} /> JSON conditions
+          <button type="button" className="text-faint hover:text-fg" onClick={() => setHelp((h) => !h)} title="Path syntax">
             <HelpCircle size={12} />
           </button>
         </span>
         {rows.length > 1 && (
           <div className="flex rounded-md border border-line p-0.5 text-[10px] font-semibold uppercase">
             {[
-              ["all", "И"],
-              ["any", "ИЛИ"],
+              ["all", "AND"],
+              ["any", "OR"],
             ].map(([m, l]) => (
               <button
                 key={m}
@@ -44,10 +44,10 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
 
       {help && (
         <div className="space-y-1 rounded-lg border border-line bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-muted">
-          <div><span className="text-fg">resources.cpu</span> · вложенное поле</div>
-          <div><span className="text-fg">conditions[0].type</span> · элемент массива</div>
-          <div><span className="text-fg">["app.kubernetes.io/name"]</span> · ключ с точками</div>
-          <div className="pt-1 font-sans text-faint">Пустой путь — весь {`spec/status/…`} целиком.</div>
+          <div><span className="text-fg">resources.cpu</span> · nested field</div>
+          <div><span className="text-fg">conditions[0].type</span> · array element</div>
+          <div><span className="text-fg">["app.kubernetes.io/name"]</span> · key with dots</div>
+          <div className="pt-1 font-sans text-faint">Empty path — the whole {`spec/status/…`}.</div>
         </div>
       )}
 
@@ -102,7 +102,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
             type="button"
             onClick={() => remove(r.id)}
             className="absolute -right-2 -top-2 hidden h-5 w-5 items-center justify-center rounded-full border border-line bg-elevated text-faint hover:text-danger group-hover:flex"
-            title="Удалить условие"
+            title="Remove condition"
           >
             <X size={11} />
           </button>
@@ -114,7 +114,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
         onClick={() => onChange([...rows, newJsonRow()])}
         className="flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line text-xs text-muted transition-colors hover:border-accent/50 hover:text-accent"
       >
-        <Plus size={13} /> Условие
+        <Plus size={13} /> Condition
       </button>
     </div>
   );

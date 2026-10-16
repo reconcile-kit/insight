@@ -1,8 +1,15 @@
 // Reads with complex filters go to the insight backend (straight to the DB replica).
 // A single resource GET and all writes go to state-manager through the /api proxy.
 
+import { toLogin } from "@/lib/auth";
+
 async function request(url, init) {
   const res = await fetch(url, init);
+  // The session expired while the page was open.
+  if (res.status === 401) {
+    toLogin();
+    throw Object.assign(new Error("Session expired, please sign in again"), { status: 401, name: "AbortError" });
+  }
   const text = await res.text();
   let body = null;
   try {

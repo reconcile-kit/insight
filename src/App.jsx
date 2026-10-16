@@ -7,6 +7,8 @@ import { Pagination } from "@/components/Pagination";
 import { ResourceDrawer } from "@/components/ResourceDrawer";
 import { Toaster, useToast } from "@/components/Toaster";
 import { Logo } from "@/components/Logo";
+import { UserMenu } from "@/components/UserMenu";
+import { useAuth, can } from "@/lib/auth";
 import { searchResources } from "@/lib/api";
 import { emptyState, readUrl, writeUrl, isJsonRowActive, JSON_OPS } from "@/lib/state";
 import { cn, fmtNum, hue } from "@/lib/utils";
@@ -52,7 +54,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
     <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
       {state.json.filter(isJsonRowActive).length > 1 && (
         <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
-          json: {state.json_match === "any" ? "или" : "и"}
+          json: {state.json_match === "any" ? "or" : "and"}
         </span>
       )}
       {chips.map((c) => (
@@ -72,7 +74,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
         </span>
       ))}
       <button onClick={onClear} className="ml-1 text-xs text-faint hover:text-fg">
-        Сбросить всё
+        Clear all
       </button>
     </div>
   );
@@ -81,6 +83,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
 function Insight() {
   const toast = useToast();
   const [dark, toggleTheme] = useTheme();
+  const { access } = useAuth();
   const [applied, setApplied] = useState(readUrl);
   const [draft, setDraft] = useState(applied);
   const [result, setResult] = useState({ items: [], total: null });
@@ -137,7 +140,7 @@ function Insight() {
 
   const quickFilter = (field, value) => {
     patchApplied({ [field]: value });
-    toast(`Фильтр: ${field} = ${value}`);
+    toast(`Filter: ${field} = ${value}`);
   };
 
   const addLabel = (term) => {
@@ -202,8 +205,8 @@ function Insight() {
 
   const subtitle = useMemo(() => {
     if (error) return null;
-    if (total == null) return result.countError ? "не удалось посчитать" : "…";
-    return `${fmtNum(total)} ${plural(total, ["ресурс", "ресурса", "ресурсов"])}`;
+    if (total == null) return result.countError ? "couldn't count" : "…";
+    return `${fmtNum(total)} ${total === 1 ? "resource" : "resources"}`;
   }, [total, error, result.countError]);
 
   return (
@@ -213,7 +216,7 @@ function Insight() {
         <button
           onClick={() => setSidebar((s) => !s)}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-line/50 hover:text-fg"
-          title="Фильтры"
+          title="Filters"
         >
           {sidebar ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
         </button>
@@ -236,7 +239,7 @@ function Insight() {
           <input
             ref={searchRef}
             className="field h-9 rounded-xl bg-elevated pl-9 pr-16"
-            placeholder="Поиск по имени ресурса…"
+            placeholder="Search by resource name…"
             value={draft.name}
             spellCheck={false}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
@@ -259,7 +262,7 @@ function Insight() {
               "flex h-8 items-center gap-1 rounded-lg px-2 text-xs transition-colors",
               auto ? "bg-accent/10 text-accent" : "text-muted hover:bg-line/50"
             )}
-            title="Автообновление"
+            title="Auto refresh"
           >
             <Timer size={14} />
             <select
@@ -274,16 +277,21 @@ function Insight() {
               ))}
             </select>
           </label>
-          <Button size="icon" variant="ghost" onClick={refresh} title="Обновить">
+          <Button size="icon" variant="ghost" onClick={refresh} title="Refresh">
             <RefreshCw size={15} className={cn(loading && "animate-spin")} />
           </Button>
-          <Button size="icon" variant="ghost" onClick={toggleTheme} title="Тема">
+          <Button size="icon" variant="ghost" onClick={toggleTheme} title="Theme">
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </Button>
-          <div className="mx-1 h-5 w-px bg-line" />
-          <Button variant="primary" size="md" onClick={openCreate}>
-            <Plus size={15} /> Создать
-          </Button>
+          {can(access, "write") && (
+            <>
+              <div className="mx-1 h-5 w-px bg-line" />
+              <Button variant="primary" size="md" onClick={openCreate}>
+                <Plus size={15} /> Create
+              </Button>
+            </>
+          )}
+          <UserMenu />
         </div>
       </header>
 
@@ -303,7 +311,7 @@ function Insight() {
         {/* Main */}
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-baseline gap-3 px-5 pb-3 pt-4">
-            <h1 className="text-lg font-semibold tracking-tight">Ресурсы</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Resources</h1>
             {subtitle && <span className="text-sm tabular-nums text-muted">{subtitle}</span>}
             {loading && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
           </div>
@@ -357,13 +365,6 @@ function Insight() {
   );
 }
 
-function plural(n, [one, few, many]) {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
 
 export default function App() {
   return (
