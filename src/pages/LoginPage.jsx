@@ -157,7 +157,8 @@ function tileStyle(t) {
 // Slow and soft: the phases change unhurriedly.
 // The fade is part of the interval: hold (~1.7s) + fade (2.1s).
 const PHASE_EVERY = 3800; // ms between phases
-const PHASE_FADE = { transitionDuration: "2100ms", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" };
+const PHASE_FADE_MS = 2100;
+const PHASE_FADE = { transitionDuration: `${PHASE_FADE_MS}ms`, transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" };
 
 // The phases of the reconcile loop, lit one at a time. Illustrative only:
 // no numbers, so nobody mistakes the demo map for real data.
@@ -173,8 +174,18 @@ function PhaseTicker() {
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => setActive((a) => (a + 1) % PHASES.length), PHASE_EVERY);
-    return () => clearInterval(id);
+    // The first phase is lit without a fade, so it gets only the hold time;
+    // otherwise it would stay lit longer than the others.
+    const next = () => setActive((a) => (a + 1) % PHASES.length);
+    let id;
+    const first = setTimeout(() => {
+      next();
+      id = setInterval(next, PHASE_EVERY);
+    }, PHASE_EVERY - PHASE_FADE_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, []);
 
   return (
