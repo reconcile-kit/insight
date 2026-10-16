@@ -157,7 +157,7 @@ function tileStyle(t) {
 // Slow and soft: the phases change unhurriedly.
 // The fade is part of the interval: hold (~4.4s) + fade.
 const PHASE_EVERY = 5450; // ms between phases
-const PHASE_FADE = { transitionDuration: "2100ms", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" };
+const PHASE_FADE = { transitionDuration: "1050ms", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" };
 
 // The phases of the reconcile loop, lit one at a time. Illustrative only:
 // no numbers, so nobody mistakes the demo map for real data.
