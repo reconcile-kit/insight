@@ -11,10 +11,15 @@ import (
 	"time"
 
 	"github.com/reconcile-kit/insight/internal/config"
+	"github.com/reconcile-kit/insight/internal/mcpserver"
 	"github.com/reconcile-kit/insight/internal/server"
+	"github.com/reconcile-kit/insight/internal/statemanager"
 	"github.com/reconcile-kit/insight/internal/store"
 	"github.com/reconcile-kit/insight/web"
 )
+
+// version is set at build time (-ldflags "-X main.version=...").
+var version = "dev"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -43,19 +48,31 @@ func run(log *slog.Logger) error {
 	}
 	defer db.Close()
 
+	var mcpHandler http.Handler
+	if mc := (mcpserver.Config{
+		ReadTokens:  cfg.MCPReadTokens,
+		WriteTokens: cfg.MCPWriteTokens,
+		Version:     version,
+		Log:         log,
+	}); mc.Enabled() {
+		mcpHandler = mcpserver.Handler(mc, db, statemanager.New(cfg.StateManagerURL, cfg.StateManagerToken))
+	}
+
 	srv := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: server.New(server.Config{
 			StateManagerURL: cfg.StateManagerURL,
 			Static:          web.FS(),
 			Log:             log,
+			MCP:             mcpHandler,
 		}, db),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.ListenAddr, "state_manager", cfg.StateManagerURL.String())
+		log.Info("listening", "addr", cfg.ListenAddr, "state_manager", cfg.StateManagerURL.String(),
+			"mcp_read_tokens", len(cfg.MCPReadTokens), "mcp_write_tokens", len(cfg.MCPWriteTokens))
 		errCh <- srv.ListenAndServe()
 	}()
 

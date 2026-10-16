@@ -2,6 +2,7 @@
 //
 //   - /insight/v1/*         complex read queries, served directly from the DB (read-only)
 //   - /api/v1/groups/*      single-resource GET and all writes, proxied to state-manager as is
+//   - /mcp                  MCP endpoint for AI agents (own bearer tokens, see internal/mcpserver)
 //   - everything else       the embedded SPA
 package server
 
@@ -34,6 +35,8 @@ type Config struct {
 	StateManagerURL *url.URL
 	Static          fs.FS
 	Log             *slog.Logger
+	// MCP serves /mcp; nil answers 404.
+	MCP http.Handler
 }
 
 const maxBody = 1 << 20
@@ -70,6 +73,14 @@ func New(cfg Config, db Reader) http.Handler {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not exposed by insight; use /insight/v1 for reads"})
 	}))
 
+	if cfg.MCP != nil {
+		r.Handle("/mcp", cfg.MCP)
+	} else {
+		r.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "MCP is disabled: set MCP_READ_TOKEN and/or MCP_WRITE_TOKEN"})
+		}))
+	}
+
 	r.Handle("/*", spa(cfg.Static))
 	return r
 }
@@ -104,10 +115,7 @@ func (h *handlers) values(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Limit <= 0 || req.Limit > 500 {
-		req.Limit = 200
-	}
-	vals, err := h.db.Values(r.Context(), req.Field, req.Q, req.Search, req.Limit)
+	vals, err := h.db.Values(r.Context(), req.Field, req.Q, req.Search, query.ValuesLimit(req.Limit))
 	if err != nil {
 		h.fail(w, r, err)
 		return

@@ -73,6 +73,10 @@ func TestRouting(t *testing.T) {
 	if rec := do("POST", "/insight/v1/paths", "{}"); rec.Code != 404 {
 		t.Fatalf("removed method must be 404: %d", rec.Code)
 	}
+	// Without MCP tokens /mcp is a JSON 404, not the SPA.
+	if rec := do("POST", "/mcp", "{}"); rec.Code != 404 || !strings.Contains(rec.Body.String(), "MCP is disabled") {
+		t.Fatalf("disabled mcp: %d %s", rec.Code, rec.Body)
+	}
 	if rec := do("GET", "/some/client/route", ""); !strings.Contains(rec.Body.String(), "spa") {
 		t.Fatalf("spa fallback: %s", rec.Body)
 	}

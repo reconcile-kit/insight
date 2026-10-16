@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,7 +20,17 @@ type Config struct {
 	DatabaseDSN      string
 	DBMaxConns       int32
 	StatementTimeout time.Duration
+
+	// MCPReadTokens and MCPWriteTokens enable /mcp; see internal/mcpserver.
+	MCPReadTokens  []string
+	MCPWriteTokens []string
+	// StateManagerToken is sent to state-manager by the MCP tools (the UI
+	// proxy forwards the caller's own Authorization header instead).
+	StateManagerToken string
 }
+
+// minTokenLen keeps obviously guessable MCP tokens out.
+const minTokenLen = 16
 
 func Load() (*Config, error) {
 	c := &Config{
@@ -52,7 +63,37 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DATABASE_STATEMENT_TIMEOUT: %w", err)
 	}
+
+	if c.MCPReadTokens, err = tokens("MCP_READ_TOKEN"); err != nil {
+		return nil, err
+	}
+	if c.MCPWriteTokens, err = tokens("MCP_WRITE_TOKEN"); err != nil {
+		return nil, err
+	}
+	for _, r := range c.MCPReadTokens {
+		for _, w := range c.MCPWriteTokens {
+			if r == w {
+				return nil, errors.New("MCP_READ_TOKEN and MCP_WRITE_TOKEN must not share a token")
+			}
+		}
+	}
+	c.StateManagerToken = os.Getenv("STATE_MANAGER_TOKEN")
 	return c, nil
+}
+
+// tokens reads a comma separated list of tokens (several allow rotation).
+func tokens(key string) ([]string, error) {
+	var out []string
+	for _, t := range strings.Split(os.Getenv(key), ",") {
+		if t = strings.TrimSpace(t); t == "" {
+			continue
+		}
+		if len(t) < minTokenLen {
+			return nil, fmt.Errorf("%s: tokens must be at least %d characters", key, minTokenLen)
+		}
+		out = append(out, t)
+	}
+	return out, nil
 }
 
 // databaseDSN prefers DATABASE_URL and otherwise builds the DSN from

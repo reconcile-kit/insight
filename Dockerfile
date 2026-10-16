@@ -17,7 +17,8 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY web/embed.go ./web/
 COPY --from=web /src/web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/insight ./cmd/insight
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/insight ./cmd/insight
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/insight /insight

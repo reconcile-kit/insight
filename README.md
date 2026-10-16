@@ -22,8 +22,8 @@ Insight — веб-интерфейс для просмотра, поиска и
 Insight — один Go-бинарь со встроенным фронтендом (React). Внешних зависимостей, кроме PostgreSQL и state-manager, нет.
 
 ```
-браузер ──► insight ─┬─► PostgreSQL (реплика)   чтение: список, фильтры, счётчики
-                     └─► state-manager          GET одного ресурса, создание, изменение, удаление
+браузер ────► insight ─┬─► PostgreSQL (реплика)   чтение: список, фильтры, счётчики
+AI-агент (MCP) ┘       └─► state-manager          GET одного ресурса, создание, изменение, удаление
 ```
 
 | Запрос | Куда идёт |
@@ -31,6 +31,7 @@ Insight — один Go-бинарь со встроенным фронтенд�
 | `POST /insight/v1/resources/search`, `POST /insight/v1/values` | Напрямую в PostgreSQL, **только чтение**. |
 | `GET/POST/PUT/DELETE /api/v1/groups/...` | Проксируется в state-manager без изменений. |
 | Остальные `/api/*`, включая list state-manager | `404`. |
+| `POST /mcp` | MCP для AI-агентов, своя авторизация по токенам. Внутри та же логика: чтение из PostgreSQL, GET и запись через state-manager. См. [MCP](#mcp-для-ai-агентов). |
 
 - API state-manager не меняется и не получает тяжёлых запросов. Сложные фильтры выполняет insight на своей стороне.
 - Писать в БД insight не может: каждый запрос выполняется в `READ ONLY` транзакции. Всё равно подключайте его к реплике под read-only ролью.
@@ -49,6 +50,7 @@ Insight — один Go-бинарь со встроенным фронтенд�
 - Клик по значению в ячейке или по label добавляет фильтр. `Enter` в любом поле применяет фильтры.
 - Ресурс открывается в боковой панели, тело каждый раз заново загружается из state-manager. Редактор JSON с подсветкой, сохранение по `⌘S`.
 - Светлая и тёмная тема. Фильтры хранятся в URL, ссылкой можно поделиться.
+- MCP-сервер `/mcp` для AI-агентов с отдельными токенами на чтение и на запись.
 
 ## Установка
 
@@ -211,6 +213,9 @@ curl -s -X POST http://<insight>/insight/v1/resources/search -d '{"limit":1}'
 | `LISTEN_ADDR` | `:27182` | Адрес HTTP-сервера. |
 | `DATABASE_MAX_CONNS` | `10` | Максимум соединений к БД на один под. |
 | `DATABASE_STATEMENT_TIMEOUT` | `15s` | Предельное время одного SQL-запроса. Если подсчёт total не укладывается, список всё равно возвращается, но без total, а в UI показывается «не удалось посчитать». |
+| `MCP_READ_TOKEN` | — | Токен MCP только на чтение. Можно несколько через запятую (для ротации). Минимум 16 символов. |
+| `MCP_WRITE_TOKEN` | — | Токен MCP на чтение и запись. Можно несколько через запятую. Не должен совпадать с токеном на чтение. Если не задан ни один `MCP_*_TOKEN`, `/mcp` отвечает `404`. |
+| `STATE_MANAGER_TOKEN` | — | Bearer-токен, с которым MCP обращается к state-manager (нужен, если там `AUTH_ENABLED=true`). UI его не использует. |
 
 В `DATABASE_URL` можно передавать [параметры libpq/pgx](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig), например `sslrootcert=/certs/ca.pem` или `target_session_attrs=read-only`.
 
@@ -229,6 +234,75 @@ Insight работает через PgBouncer в режимах `session` и `tr
 - **Не публикуйте insight наружу без аутентификации.** Ставьте его за Ingress с oauth2-proxy или OIDC, за VPN или во внутреннюю сеть.
 - **Если в state-manager включён `AUTH_ENABLED=true`.** Insight передаёт заголовок `Authorization` в state-manager без изменений, но сам браузер токен не добавляет. Чтобы запись работала, заголовок `Authorization: Bearer <JWT>` должен подставлять прокси перед insight, например oauth2-proxy с `--pass-authorization-header`. Тогда state-manager сам проверит права пользователя на запись. Без этого чтение работает, а создание, изменение и удаление вернут `401`.
 - **Чтение идёт напрямую из БД, и правила `auth_role_rules` state-manager к нему не применяются.** Любой, кто имеет доступ к insight, видит все ресурсы.
+
+## MCP для AI-агентов
+
+`/mcp` — MCP-сервер (транспорт Streamable HTTP, без сессий) для Claude Code, Cursor и других агентов. Он построен на той же реализации, что и методы insight, и ходит по тем же маршрутам:
+
+| Инструмент | Что делает | Куда идёт | Токен |
+|---|---|---|---|
+| `search_resources` | То же, что `POST /insight/v1/resources/search`: фильтры, labels, условия по jsonb, сортировка, total. Тело запроса такое же. | PostgreSQL, только чтение | read, write |
+| `list_values` | То же, что `POST /insight/v1/values`. | PostgreSQL, только чтение | read, write |
+| `get_resource` | Полное тело ресурса. | state-manager `GET` | read, write |
+| `create_resource` | Создание. | state-manager `POST` | write |
+| `update_resource` | Замена spec, labels, annotations, finalizers; `version` для защиты от одновременных правок. | state-manager `PUT` | write |
+| `delete_resource` | Пометка на удаление. | state-manager `DELETE` | write |
+
+**Авторизация своя**, не через прокси перед UI: заголовок `Authorization: Bearer <токен>`.
+- `MCP_READ_TOKEN` — агент видит только три инструмента чтения. Вызвать инструмент записи по имени тоже нельзя: у сервера для этого токена их нет.
+- `MCP_WRITE_TOKEN` — все шесть инструментов.
+- Неверный или отсутствующий токен — `401`. Каждый вызов пишется в лог: инструмент, уровень доступа и ресурс (`"msg":"mcp tool"`). Сами токены в лог не попадают.
+
+Отличия от UI: условие по jsonb без значения (кроме `exists`/`not_exists`) возвращает ошибку, а не игнорируется, чтобы агент не получил молча расширенную выборку; `update_resource` без `spec` отклоняется, чтобы не затереть spec.
+
+**Токены** удобно хранить в Secret:
+
+```bash
+kubectl -n state-manager create secret generic insight-mcp \
+  --from-literal=MCP_READ_TOKEN="$(openssl rand -hex 32)" \
+  --from-literal=MCP_WRITE_TOKEN="$(openssl rand -hex 32)"
+```
+
+```yaml
+          envFrom:
+            - secretRef:
+                name: insight-mcp
+```
+
+Для ротации задайте старый и новый токен через запятую, переключите клиентов и уберите старый.
+
+**Если перед insight стоит auth-прокси** (gatekeeper, oauth2-proxy), пропустите `/mcp` без его аутентификации — у агента нет браузерной сессии, проверку делает сам insight. Для gatekeeper — правило выше `/*`:
+
+```yaml
+resources:
+  - uri: /mcp
+    white-listed: true
+  - uri: /*
+    ...
+```
+
+**Подключение агента.** Claude Code:
+
+```bash
+claude mcp add --transport http insight https://insight.example.com/mcp \
+  --header "Authorization: Bearer $INSIGHT_MCP_TOKEN"
+```
+
+Другие клиенты (`mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "insight": {
+      "type": "http",
+      "url": "https://insight.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${INSIGHT_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Пример запроса агента «найди упавшие Job»: `search_resources` с `{"filters":{"kind":"Job"},"json":[{"root":"status","path":"exit_code","op":"ne","value":"0"}]}`.
 
 ## Производительность на больших объёмах
 
@@ -265,6 +339,13 @@ make stand-down   # остановить и удалить данные
 | insight | http://127.0.0.1:57182 |
 | state-manager | http://127.0.0.1:58080 |
 | postgres | `postgres://e2e:e2e@127.0.0.1:55432/e2e` |
+
+MCP на стенде: `http://127.0.0.1:57182/mcp`, токены `local-read-token-0000` (чтение) и `local-write-token-0000` (запись):
+
+```bash
+claude mcp add --transport http insight-local http://127.0.0.1:57182/mcp \
+  --header "Authorization: Bearer local-read-token-0000"
+```
 
 - **Версии зависимостей** задаются так же, как в e2e-tests, например `STATE_MANAGER_REF=pr/42 make stand` или `STATE_MANAGER_REF=../state-manager make stand`.
 - **Конфликт портов.** Стенд занимает те же порты, что `make e2e` в e2e-tests, поэтому одновременно их не запустить.
@@ -357,4 +438,7 @@ src/                фронтенд (React, Tailwind, CodeMirror)
 | Total показывает «не удалось посчитать» | `count(*)` не уложился в `DATABASE_STATEMENT_TIMEOUT`. Сузьте фильтры или увеличьте таймаут. |
 | `/readyz` — `503`: `unsupported startup parameter: statement_timeout` (или `default_transaction_read_only`) | Insight `0.3.0` за PgBouncer. Обновитесь до `0.3.1` и не передавайте серверные параметры в `DATABASE_URL`. |
 | `prepared statement "…" does not exist` | PgBouncer в режиме `transaction` без поддержки prepared statements, а в `DATABASE_URL` задан `default_query_exec_mode=cache_statement`. Уберите этот параметр. |
+| `/mcp` — `404` `MCP is disabled` | Не задан ни `MCP_READ_TOKEN`, ни `MCP_WRITE_TOKEN`. |
+| `/mcp` — `401` | Неверный токен или нет заголовка `Authorization: Bearer …`. Если перед insight стоит auth-прокси и ответ — его страница входа, пропустите `/mcp` (см. [MCP](#mcp-для-ai-агентов)). |
+| Инструменты записи MCP возвращают `state-manager 401` | В state-manager включена авторизация, задайте `STATE_MANAGER_TOKEN`. |
 | `canceling statement due to conflict with recovery` | Запрос на реплике отменён репликацией. См. [Производительность](#производительность-на-больших-объёмах). |

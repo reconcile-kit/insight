@@ -13,7 +13,18 @@ import (
 const (
 	DefaultLimit = 100
 	MaxLimit     = 1000
+
+	DefaultValuesLimit = 200
+	MaxValuesLimit     = 500
 )
+
+// ValuesLimit applies the default and the cap of the values method.
+func ValuesLimit(n int) int {
+	if n <= 0 || n > MaxValuesLimit {
+		return DefaultValuesLimit
+	}
+	return n
+}
 
 // Filters are the top-level column filters.
 type Filters struct {
