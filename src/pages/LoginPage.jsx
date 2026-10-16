@@ -154,6 +154,10 @@ function tileStyle(t) {
   }
 }
 
+// Slow and soft: the phases change unhurriedly.
+const PHASE_EVERY = 8800; // ms between phases
+const PHASE_FADE = { transitionDuration: "2100ms", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)" };
+
 // The phases of the reconcile loop, lit one at a time. Illustrative only:
 // no numbers, so nobody mistakes the demo map for real data.
 const PHASES = [
@@ -168,7 +172,7 @@ function PhaseTicker() {
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => setActive((a) => (a + 1) % PHASES.length), 2200);
+    const id = setInterval(() => setActive((a) => (a + 1) % PHASES.length), PHASE_EVERY);
     return () => clearInterval(id);
   }, []);
 
@@ -180,13 +184,18 @@ function PhaseTicker() {
           <span
             key={p.word}
             className={cn(
-              "flex items-center gap-2 transition-all duration-700",
+              "flex items-center gap-2 transition-all",
               on ? "text-fg opacity-100 blur-0" : "text-muted opacity-35 blur-[1.5px]"
             )}
+            style={PHASE_FADE}
           >
             <span
-              className="h-2 w-2 rounded-full transition-all duration-700"
-              style={{ background: on ? p.color : "rgb(var(--faint))", boxShadow: on ? `0 0 10px ${p.color}` : "none" }}
+              className="h-2 w-2 rounded-full transition-all"
+              style={{
+                ...PHASE_FADE,
+                background: on ? p.color : "rgb(var(--faint))",
+                boxShadow: on ? `0 0 10px ${p.color}` : "none",
+              }}
             />
             {p.word}
           </span>
