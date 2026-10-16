@@ -8,7 +8,7 @@ async function request(url, init) {
   // The session expired while the page was open.
   if (res.status === 401) {
     toLogin();
-    throw Object.assign(new Error("Сессия истекла, нужен повторный вход"), { status: 401, name: "AbortError" });
+    throw Object.assign(new Error("Session expired, please sign in again"), { status: 401, name: "AbortError" });
   }
   const text = await res.text();
   let body = null;

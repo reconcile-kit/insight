@@ -32,10 +32,10 @@ export function timeAgo(ts) {
 
 export function fmtDate(ts) {
   if (!ts) return "—";
-  return new Date(ts).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "medium" });
+  return new Date(ts).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "medium" });
 }
 
-export const fmtNum = (n) => (n ?? 0).toLocaleString("ru-RU");
+export const fmtNum = (n) => (n ?? 0).toLocaleString("en-US");
 
 export function useDebounced(value, ms) {
   const [v, setV] = React.useState(value);

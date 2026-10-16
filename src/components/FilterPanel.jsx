@@ -95,7 +95,7 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
             <label className="label">{label}</label>
             <Suggest
               value={draft[field]}
-              placeholder={`Любой ${label.toLowerCase()}`}
+              placeholder={`Any ${label.toLowerCase()}`}
               onChange={(v) => set({ [field]: v })}
               icon={marker(field, draft)}
               onPick={(it) =>
@@ -108,7 +108,7 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
                     type="button"
                     className="flex h-7 w-7 items-center justify-center rounded-md text-faint hover:text-fg"
                     onClick={() => onApply({ ...draft, [field]: "" })}
-                    title="Сбросить"
+                    title="Clear"
                   >
                     <X size={13} />
                   </button>
@@ -127,7 +127,7 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
               type="button"
               className="mb-1.5 text-faint hover:text-fg"
               onClick={() => setHelp((h) => !h)}
-              title="Синтаксис"
+              title="Syntax"
             >
               <HelpCircle size={13} />
             </button>
@@ -141,18 +141,18 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
           />
           {help && (
             <div className="mt-2 space-y-1 rounded-lg border border-line bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-muted">
-              <div><span className="text-fg">key=value</span> · равно</div>
-              <div><span className="text-fg">key!=value</span> · не равно / нет ключа</div>
-              <div><span className="text-fg">key~part</span> · значение содержит</div>
+              <div><span className="text-fg">key=value</span> · equals</div>
+              <div><span className="text-fg">key!=value</span> · not equal / no key</div>
+              <div><span className="text-fg">key~part</span> · value contains</div>
               <div><span className="text-fg">key in (a,b)</span> · <span className="text-fg">notin (a,b)</span></div>
-              <div><span className="text-fg">key</span> · есть ключ · <span className="text-fg">!key</span> · нет</div>
-              <div className="pt-1 font-sans text-faint">Условия через запятую объединяются по И.</div>
+              <div><span className="text-fg">key</span> · key exists · <span className="text-fg">!key</span> · no key</div>
+              <div className="pt-1 font-sans text-faint">Comma-separated terms are combined with AND.</div>
             </div>
           )}
         </div>
 
         <div>
-          <label className="label">Состояние</label>
+          <label className="label">State</label>
           <div className="flex gap-1.5">
             <Toggle checked={draft.pending} onChange={(v) => onApply({ ...draft, pending: v })}>
               Pending
@@ -173,9 +173,9 @@ export function FilterPanel({ draft, setDraft, onApply, onReset }) {
 
       <div className="flex gap-2 border-t border-line p-3">
         <Button type="submit" variant="primary" className="flex-1 justify-center">
-          Применить <CornerDownLeft size={13} className="opacity-70" />
+          Apply <CornerDownLeft size={13} className="opacity-70" />
         </Button>
-        <Button size="icon" className="h-9 w-9" onClick={onReset} title="Сбросить всё">
+        <Button size="icon" className="h-9 w-9" onClick={onReset} title="Clear all">
           <RotateCcw size={14} />
         </Button>
       </div>

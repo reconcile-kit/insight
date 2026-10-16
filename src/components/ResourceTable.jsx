@@ -64,7 +64,7 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                     "group/h inline-flex items-center gap-1 uppercase transition-colors hover:text-fg",
                     sort === c.sort && "text-fg"
                   )}
-                  title="Сортировать"
+                  title="Sort"
                 >
                   {c.label}
                   <SortIcon active={sort === c.sort} desc={desc} />
@@ -93,8 +93,8 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
           <tr>
             <td colSpan={COLS.length} className="py-24 text-center text-muted">
               <Inbox className="mx-auto mb-3 text-faint" size={28} strokeWidth={1.5} />
-              Ничего не найдено
-              <div className="mt-1 text-xs text-faint">Попробуйте ослабить фильтры</div>
+              Nothing found
+              <div className="mt-1 text-xs text-faint">Try loosening the filters</div>
             </td>
           </tr>
         )}
@@ -121,7 +121,7 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                 />
                 <span className="flex items-center gap-2">
                   {r.deletion_timestamp && (
-                    <span title={`Удаляется с ${fmtDate(r.deletion_timestamp)}`}>
+                    <span title={`Deleting since ${fmtDate(r.deletion_timestamp)}`}>
                       <Trash2 size={12} className="shrink-0 text-danger" />
                     </span>
                   )}
@@ -131,22 +131,22 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                 </span>
               </td>
               <td className="whitespace-nowrap border-b border-line/60 px-3 py-1.5">
-                <Filterable onFilter={() => onFilter("kind", r.kind)} title="Фильтр по kind">
+                <Filterable onFilter={() => onFilter("kind", r.kind)} title="Filter by kind">
                   <KindChip kind={r.kind} group={r.resource_group} />
                 </Filterable>
               </td>
               <td className="max-w-[220px] whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-muted">
-                <Filterable onFilter={() => onFilter("resource_group", r.resource_group)} title="Фильтр по group">
+                <Filterable onFilter={() => onFilter("resource_group", r.resource_group)} title="Filter by group">
                   <GroupLabel group={r.resource_group} />
                 </Filterable>
               </td>
               <td className="max-w-[200px] whitespace-nowrap border-b border-line/60 px-3 py-1.5 text-muted">
-                <Filterable onFilter={() => onFilter("namespace", r.namespace)} title="Фильтр по namespace">
+                <Filterable onFilter={() => onFilter("namespace", r.namespace)} title="Filter by namespace">
                   {r.namespace}
                 </Filterable>
               </td>
               <td className="whitespace-nowrap border-b border-line/60 px-3 py-1.5 font-mono text-[12px] text-muted">
-                <Filterable onFilter={() => onFilter("shard_id", r.shard_id)} title="Фильтр по shard">
+                <Filterable onFilter={() => onFilter("shard_id", r.shard_id)} title="Filter by shard">
                   {r.shard_id}
                 </Filterable>
               </td>
@@ -157,7 +157,7 @@ export function ResourceTable({ items, loading, sort, desc, onSort, onFilter, on
                       key={k}
                       k={k}
                       v={v}
-                      title={`Фильтр ${k}=${v}`}
+                      title={`Filter ${k}=${v}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onLabel(`${k}=${v}`);

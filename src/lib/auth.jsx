@@ -43,13 +43,13 @@ export function AuthGate({ children, noAccess }) {
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-danger">Не удалось проверить вход: {error}</div>
+      <div className="flex h-full items-center justify-center p-6 text-sm text-danger">Could not check the session: {error}</div>
     );
   }
   if (!me) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted">
-        <Loader2 size={18} className="mr-2 animate-spin" /> Загрузка…
+        <Loader2 size={18} className="mr-2 animate-spin" /> Loading…
       </div>
     );
   }

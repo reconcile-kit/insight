@@ -5,13 +5,13 @@ import { fetchMe } from "@/lib/auth";
 import { cn, hue } from "@/lib/utils";
 
 const ERRORS = {
-  state_expired: "Время на вход истекло. Попробуйте ещё раз.",
-  state_mismatch: "Не удалось проверить ответ провайдера. Попробуйте ещё раз.",
-  provider_error: "Провайдер отклонил вход.",
-  provider_unavailable: "Провайдер входа сейчас недоступен. Попробуйте позже.",
-  exchange_failed: "Не удалось подтвердить вход у провайдера.",
-  invalid_token: "Провайдер вернул некорректный токен.",
-  internal: "Внутренняя ошибка при входе.",
+  state_expired: "The sign-in took too long. Please try again.",
+  state_mismatch: "Could not verify the provider's response. Please try again.",
+  provider_error: "The identity provider rejected the sign-in.",
+  provider_unavailable: "The identity provider is unavailable. Please try again later.",
+  exchange_failed: "Could not complete the sign-in with the provider.",
+  invalid_token: "The identity provider returned an invalid token.",
+  internal: "Internal error during sign-in.",
 };
 
 const safeReturnTo = (p) => (p && p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/login") ? p : "/");
@@ -229,7 +229,7 @@ export function LoginShell({ children }) {
         </div>
         <div className="my-16 w-full max-w-[360px]">{children}</div>
         <div className="text-xs leading-5 text-faint">
-          Чтение — из реплики базы. Изменения — только через API state-manager.
+          Reads come from a database replica. Changes go only through the state-manager API.
         </div>
       </section>
       <section className="hidden min-h-0 flex-col p-10 lg:flex">
@@ -258,21 +258,21 @@ export default function LoginPage() {
 
   return (
     <LoginShell>
-      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Вход в Insight</h1>
+      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Sign in to Insight</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        Ресурсы state-manager, их spec и status — с поиском по любому полю. Войдите корпоративной учётной записью.
+        State-manager resources, their spec and status, searchable by any field. Sign in with your corporate account.
       </p>
       {error && (
         <div className="mt-6 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/10 px-3.5 py-3 text-[13px] leading-5 text-danger">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          <span>{ERRORS[error] || "Не удалось войти. Попробуйте ещё раз."}</span>
+          <span>{ERRORS[error] || "Could not sign in. Please try again."}</span>
         </div>
       )}
       <a
         href={`/auth/login?return_to=${encodeURIComponent(returnTo)}`}
         className={cn(btn, "mt-8 bg-accent text-accent-fg shadow-[0_8px_24px_-8px_rgb(var(--accent)/0.6)] hover:brightness-110")}
       >
-        <LogIn size={16} /> Продолжить через SSO
+        <LogIn size={16} /> Continue with SSO
       </a>
     </LoginShell>
   );
@@ -282,13 +282,13 @@ export default function LoginPage() {
 export function NoAccessPage({ user }) {
   return (
     <LoginShell>
-      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Нет доступа</h1>
+      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">No access</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        У учётной записи <span className="font-medium text-fg">{user?.email || user?.name}</span> нет роли для
-        insight. Попросите администратора выдать роль на чтение.
+        The account <span className="font-medium text-fg">{user?.email || user?.name}</span> has no access to
+        insight. Ask an administrator for a read role.
       </p>
       <a href="/auth/logout" className={cn(btn, "mt-8 border border-line bg-elevated text-fg hover:bg-line/40")}>
-        <LogOut size={16} /> Войти под другой учётной записью
+        <LogOut size={16} /> Sign in with another account
       </a>
     </LoginShell>
   );

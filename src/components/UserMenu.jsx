@@ -4,9 +4,9 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const ACCESS = {
-  read: { label: "только чтение", cls: "bg-line/60 text-muted" },
-  write: { label: "чтение и запись", cls: "bg-accent/15 text-accent" },
-  admin: { label: "полный доступ", cls: "bg-ok/15 text-ok" },
+  read: { label: "read only", cls: "bg-line/60 text-muted" },
+  write: { label: "read & write", cls: "bg-accent/15 text-accent" },
+  admin: { label: "full access", cls: "bg-ok/15 text-ok" },
 };
 
 const initials = (s = "") =>
@@ -57,7 +57,7 @@ export function UserMenu() {
             href="/auth/logout"
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-fg transition hover:bg-line/50"
           >
-            <LogOut size={14} /> Выйти
+            <LogOut size={14} /> Sign out
           </a>
         </div>
       )}
