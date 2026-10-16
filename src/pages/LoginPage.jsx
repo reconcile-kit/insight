@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import { AlertTriangle, LogOut } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, LogIn, LogOut } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { fetchMe } from "@/lib/auth";
+import { cn, hue } from "@/lib/utils";
 
 const ERRORS = {
   state_expired: "Время на вход истекло. Попробуйте ещё раз.",
@@ -15,176 +16,191 @@ const ERRORS = {
 
 const safeReturnTo = (p) => (p && p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/login") ? p : "/");
 
-/** Drifting points that glow near the pointer and now and then on their own. */
-function Particles() {
+// Demo kinds for the map; colored with the same hue() as kind chips in the table.
+const KINDS = [
+  "compute.example.io/Instance",
+  "compute.example.io/Disk",
+  "network.example.io/Network",
+  "network.example.io/LoadBalancer",
+  "storage.example.io/Bucket",
+  "jobs.example.io/Job",
+  "jobs.example.io/CronJob",
+  "dns.example.io/Record",
+];
+
+const SYNCED = 0;
+const PENDING = 1; // spec changed: version > current_version
+const RECONCILING = 2; // a controller is on it
+const DELETING = 3;
+
+const TILE = 22; // px, including the gap
+
+/**
+ * A live map of resources: every tile is a resource colored by its kind.
+ * Now and then a spec changes (pending), a controller picks it up
+ * (reconciling) and it converges back to synced: the reconcile loop insight
+ * shows you.
+ */
+function ResourceMap() {
   const ref = useRef(null);
+  const [size, setSize] = useState({ cols: 0, rows: 0 });
+  const [tiles, setTiles] = useState([]);
 
   useEffect(() => {
-    const canvas = ref.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const pointer = { x: -1000, y: -1000 };
-    let width = 0;
-    let height = 0;
-    let frame = 0;
-    let points = [];
-
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = window.innerWidth;
-      height = window.innerHeight;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = Math.min(76, Math.max(30, Math.round((width * height) / 21000)));
-      const now = performance.now();
-      points = Array.from({ length: count }, (_, i) => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.18,
-        vy: (Math.random() - 0.5) * 0.18,
-        r: 1 + Math.random() * 1.8,
-        phase: i * 0.37 + Math.random() * 2,
-        glowAt: now + 600 + Math.random() * 12000,
-        glowFor: 1000 + Math.random() * 700,
-      }));
-    };
-
-    const ownGlow = (p, t) => {
-      if (t < p.glowAt) return 0;
-      const k = (t - p.glowAt) / p.glowFor;
-      if (k >= 1) {
-        p.glowAt = t + 4000 + Math.random() * 12000;
-        p.glowFor = 1000 + Math.random() * 700;
-        return 0;
-      }
-      return Math.sin(k * Math.PI) * 0.95;
-    };
-
-    const draw = (t) => {
-      ctx.clearRect(0, 0, width, height);
-      for (const p of points) {
-        if (reduced.matches) break;
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < -20 || p.x > width + 20) p.vx *= -1;
-        if (p.y < -20 || p.y > height + 20) p.vy *= -1;
-      }
-      for (const p of points) {
-        const near = Math.max(0, 1 - Math.hypot(p.x - pointer.x, p.y - pointer.y) / 180);
-        const g = Math.max(near, ownGlow(p, t));
-        const halo = 42 + g * 24;
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, halo);
-        grad.addColorStop(0, `rgba(139, 124, 255, ${0.14 + g * 0.12})`);
-        grad.addColorStop(1, "rgba(139, 124, 255, 0)");
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, halo, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = `rgba(74, 222, 128, ${0.32 + g * 0.55})`;
-        ctx.shadowColor = "rgba(74, 222, 128, 0.8)";
-        ctx.shadowBlur = 10 + g * 14;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r + g * 2 + Math.sin(t * 0.00045 + p.phase) * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-      if (!reduced.matches) frame = requestAnimationFrame(draw);
-    };
-
-    const onMove = (e) => {
-      pointer.x = e.clientX;
-      pointer.y = e.clientY;
-    };
-    const onLeave = () => {
-      pointer.x = -1000;
-      pointer.y = -1000;
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerleave", onLeave);
-    if (reduced.matches) draw(0);
-    else frame = requestAnimationFrame(draw);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerleave", onLeave);
-    };
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => {
+      const cols = Math.max(1, Math.floor(e.contentRect.width / TILE));
+      const rows = Math.max(1, Math.floor(e.contentRect.height / TILE));
+      setSize((s) => (s.cols === cols && s.rows === rows ? s : { cols, rows }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
-  return <canvas ref={ref} className="pointer-events-none fixed inset-0 opacity-90" aria-hidden="true" />;
-}
-
-/** Full-screen dark backdrop with the hero text and a centered card. */
-export function LoginShell({ children }) {
   useEffect(() => {
-    // The login screen is always dark, whatever the app theme is.
-    const root = document.documentElement;
-    const was = root.classList.contains("dark");
-    root.classList.add("dark");
-    return () => root.classList.toggle("dark", was);
+    const n = size.cols * size.rows;
+    setTiles(
+      Array.from({ length: n }, () => {
+        const r = Math.random();
+        return {
+          kind: KINDS[Math.floor(Math.random() * KINDS.length)],
+          state: r < 0.012 ? PENDING : r < 0.02 ? RECONCILING : SYNCED,
+          since: Date.now() - Math.random() * 3000,
+          empty: Math.random() < 0.18,
+        };
+      })
+    );
+  }, [size]);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setTiles((prev) => {
+        if (!prev.length) return prev;
+        const next = prev.slice();
+        // New spec changes arrive.
+        // A calm cluster: a few changes at a time, not a light show.
+        for (let k = 0; k < Math.max(1, Math.round(next.length / 450)); k++) {
+          const i = Math.floor(Math.random() * next.length);
+          const t = next[i];
+          if (t.empty) {
+            if (Math.random() < 0.15) next[i] = { ...t, empty: false, state: PENDING, since: now }; // created
+          } else if (t.state === SYNCED) {
+            next[i] = { ...t, state: Math.random() < 0.06 ? DELETING : PENDING, since: now };
+          }
+        }
+        // Controllers move resources along the loop.
+        for (let i = 0; i < next.length; i++) {
+          const t = next[i];
+          const age = now - t.since;
+          if (t.state === PENDING && age > 1600 + (i % 7) * 300) next[i] = { ...t, state: RECONCILING, since: now };
+          else if (t.state === RECONCILING && age > 1400 + (i % 5) * 350) next[i] = { ...t, state: SYNCED, since: now };
+          else if (t.state === DELETING && age > 2600) next[i] = { ...t, empty: true, state: SYNCED, since: now };
+        }
+        return next;
+      });
+    }, 600);
+    return () => clearInterval(id);
   }, []);
+
+  const stats = useMemo(() => {
+    const s = { total: 0, pending: 0, reconciling: 0, deleting: 0 };
+    for (const t of tiles) {
+      if (t.empty) continue;
+      s.total++;
+      if (t.state === PENDING) s.pending++;
+      if (t.state === RECONCILING) s.reconciling++;
+      if (t.state === DELETING) s.deleting++;
+    }
+    return s;
+  }, [tiles]);
 
   return (
-    <main className="relative flex min-h-full items-center overflow-hidden bg-[#06070c] px-5 py-8 text-[#e8eaf6] sm:px-8 lg:px-12">
-      <Particles />
-      <div
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(139,124,255,0.13),transparent_32rem)]"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none fixed inset-0 bg-[linear-gradient(90deg,rgba(6,7,12,0.8),transparent_42%,rgba(6,7,12,0.65))]"
-        aria-hidden="true"
-      />
-      <div className="relative mx-auto grid w-full max-w-[1160px] items-center gap-12 2xl:grid-cols-[minmax(0,1fr)_420px] 2xl:gap-2">
-        <section className="hidden max-w-3xl 2xl:block">
-          <div className="mb-8 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.3em] text-violet-200">
-            <span className="h-2 w-2 rounded-full bg-[#4ade80] shadow-[0_0_18px_rgba(74,222,128,0.65)]" />
-            reconcile-kit
-          </div>
-          <h1 className="text-7xl font-semibold leading-[0.98] tracking-[-0.06em] text-white">
-            Every resource,
-            <span className="block">
-              <span className="inline-block whitespace-nowrap bg-gradient-to-r from-violet-300 via-indigo-300 to-[#4ade80] bg-clip-text pb-2 text-transparent">
-                in sight
-              </span>
-            </span>
-          </h1>
-          <p className="mt-8 max-w-md text-base leading-7 text-slate-400">
-            <span className="block">Поиск, фильтры и правка ресурсов state-manager в одном окне.</span>
-            <span className="mt-2 block">
-              Insight читает из реплики базы и меняет ресурсы только через API state-manager.
-            </span>
-          </p>
-        </section>
-        <section className="relative w-full max-w-[420px] justify-self-center overflow-hidden rounded-[30px] border border-white/10 bg-[rgba(12,13,24,0.82)] p-7 text-center shadow-[0_32px_110px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl backdrop-saturate-150 sm:p-10">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-80 [background-image:linear-gradient(rgba(139,124,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(139,124,255,0.06)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:linear-gradient(to_bottom,black,transparent_78%)]"
-            aria-hidden="true"
-          />
-          <div className="relative flex flex-col items-center gap-6">{children}</div>
-        </section>
+    <div className="relative flex h-full flex-col">
+      <div ref={ref} className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          className="grid gap-[6px]"
+          style={{ gridTemplateColumns: `repeat(${size.cols}, ${TILE - 6}px)`, gridAutoRows: `${TILE - 6}px` }}
+        >
+          {tiles.map((t, i) => (
+            <span
+              key={i}
+              className={cn(
+                "rounded-[5px] transition-[background-color,box-shadow,opacity,transform] duration-700",
+                t.empty && "opacity-0",
+                t.state === RECONCILING && "animate-pulse"
+              )}
+              style={tileStyle(t)}
+            />
+          ))}
+        </div>
+        {/* Fade the map into the panel edges. */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgb(var(--bg))_85%)]" />
       </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 pt-5 font-mono text-[12px] text-muted">
+        <Stat label="resources" value={stats.total} />
+        <Stat label="pending" value={stats.pending} dot="rgb(var(--warn))" />
+        <Stat label="reconciling" value={stats.reconciling} dot="rgb(var(--accent))" />
+        <Stat label="deleting" value={stats.deleting} dot="rgb(var(--danger))" />
+      </div>
+    </div>
+  );
+}
+
+function tileStyle(t) {
+  const h = hue(t.kind);
+  switch (t.state) {
+    case PENDING:
+      return { background: "rgb(var(--warn) / 0.85)", boxShadow: "0 0 14px rgb(var(--warn) / 0.45)" };
+    case RECONCILING:
+      return { background: "rgb(var(--accent))", boxShadow: "0 0 16px rgb(var(--accent) / 0.55)" };
+    case DELETING:
+      return { background: "rgb(var(--danger) / 0.75)", transform: "scale(0.7)" };
+    default:
+      return {
+        background: `hsl(${h} 65% var(--chip-l) / 0.22)`,
+        boxShadow: `inset 0 0 0 1px hsl(${h} 65% var(--chip-l) / 0.35)`,
+      };
+  }
+}
+
+function Stat({ label, value, dot }) {
+  return (
+    <span className="flex items-center gap-2">
+      {dot && <span className="h-2 w-2 rounded-full" style={{ background: dot }} />}
+      <span className="tabular-nums text-fg">{value}</span>
+      {label}
+    </span>
+  );
+}
+
+/** Login column on the left, the live resource map on the right (wide screens). */
+export function LoginShell({ children }) {
+  return (
+    <main className="grid min-h-full bg-bg text-fg lg:grid-cols-[minmax(420px,520px)_1fr]">
+      <section className="relative flex flex-col justify-between border-line px-8 py-8 sm:px-12 lg:border-r lg:bg-surface">
+        <div className="flex items-center gap-2.5 text-sm font-semibold">
+          <Logo size={26} className="text-fg" />
+          Insight
+          <span className="font-normal text-faint">reconcile-kit</span>
+        </div>
+        <div className="my-16 w-full max-w-[360px]">{children}</div>
+        <div className="text-xs leading-5 text-faint">
+          Чтение — из реплики базы. Изменения — только через API state-manager.
+        </div>
+      </section>
+      <section className="hidden min-h-0 flex-col p-10 lg:flex">
+        <ResourceMap />
+      </section>
     </main>
   );
 }
 
-function Brand() {
-  return (
-    <>
-      <Logo size={80} className="text-white drop-shadow-[0_0_24px_rgba(139,124,255,0.45)]" />
-      <h2 className="text-4xl font-bold tracking-[-0.045em] text-white">Insight</h2>
-    </>
-  );
-}
-
-const pill =
-  "inline-flex min-w-[220px] items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold transition";
+const btn =
+  "inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25";
 
 export default function LoginPage() {
   const params = new URLSearchParams(window.location.search);
@@ -202,21 +218,21 @@ export default function LoginPage() {
 
   return (
     <LoginShell>
-      <Brand />
-      <p className="max-w-xs text-sm leading-6 text-slate-400">
-        Войдите через корпоративную учётную запись, чтобы открыть ресурсы state-manager.
+      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Вход в Insight</h1>
+      <p className="mt-3 text-sm leading-6 text-muted">
+        Ресурсы state-manager, их spec и status — с поиском по любому полю. Войдите корпоративной учётной записью.
       </p>
       {error && (
-        <div className="flex w-full items-start gap-2 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-left text-[13px] leading-5 text-red-200">
+        <div className="mt-6 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/10 px-3.5 py-3 text-[13px] leading-5 text-danger">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <span>{ERRORS[error] || "Не удалось войти. Попробуйте ещё раз."}</span>
         </div>
       )}
       <a
         href={`/auth/login?return_to=${encodeURIComponent(returnTo)}`}
-        className={`${pill} bg-[#8b7cff] text-white shadow-lg shadow-[rgba(139,124,255,0.3)] hover:bg-[#9d90ff]`}
+        className={cn(btn, "mt-8 bg-accent text-accent-fg shadow-[0_8px_24px_-8px_rgb(var(--accent)/0.6)] hover:brightness-110")}
       >
-        Продолжить через SSO
+        <LogIn size={16} /> Продолжить через SSO
       </a>
     </LoginShell>
   );
@@ -226,13 +242,13 @@ export default function LoginPage() {
 export function NoAccessPage({ user }) {
   return (
     <LoginShell>
-      <Brand />
-      <p className="max-w-xs text-sm leading-6 text-slate-400">
-        У учётной записи <span className="font-medium text-white">{user?.email || user?.name}</span> нет доступа к
+      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Нет доступа</h1>
+      <p className="mt-3 text-sm leading-6 text-muted">
+        У учётной записи <span className="font-medium text-fg">{user?.email || user?.name}</span> нет роли для
         insight. Попросите администратора выдать роль на чтение.
       </p>
-      <a href="/auth/logout" className={`${pill} border border-white/15 bg-white/5 text-white hover:bg-white/10`}>
-        <LogOut size={14} /> Войти под другой учётной записью
+      <a href="/auth/logout" className={cn(btn, "mt-8 border border-line bg-elevated text-fg hover:bg-line/40")}>
+        <LogOut size={16} /> Войти под другой учётной записью
       </a>
     </LoginShell>
   );
