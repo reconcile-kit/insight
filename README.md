@@ -186,6 +186,105 @@ curl -s -X POST http://<insight>/insight/v1/resources/search -d '{"limit":1}'
 
 Недоступность БД при старте не роняет процесс. В этом случае `/readyz` отвечает `503`, пока соединение не появится.
 
+### 5. Вход через Keycloak
+
+Необязательный шаг. Без него вход выключен и UI открыт всем, у кого есть к нему сетевой доступ. Подробности и другие провайдеры описаны в разделе [Вход через Keycloak или другой OIDC-провайдер](#вход-через-keycloak-или-другой-oidc-провайдер).
+
+**1. Клиент в Keycloak.** Clients → Create client:
+- `Client ID`: `insight`;
+- `Client authentication`: On, `Standard flow`: On;
+- `Valid redirect URIs`: `https://insight.example.com/auth/callback`;
+- `Valid post logout redirect URIs`: `https://insight.example.com/*`.
+
+Секрет клиента находится на вкладке Credentials.
+
+**2. Роли.** Можно оставить роли gatekeeper (`gatekeeper:insight-get`, `insight-edit`, `insight-admin`) или завести клиентские роли у клиента `insight`, например `insight:read`, `insight:write`, `insight:admin`, и выдать их пользователям или группам.
+
+**3. Секрет.**
+
+```bash
+kubectl -n state-manager create secret generic insight-auth \
+  --from-literal=AUTH_OIDC_CLIENT_SECRET='<секрет клиента из Keycloak>' \
+  --from-literal=AUTH_SESSION_SECRET="$(openssl rand -hex 32)"
+```
+
+**4. Переменные в Deployment** (в дополнение к шагу [3](#3-запуск)):
+
+```yaml
+          env:
+            - name: AUTH_ENABLED
+              value: "true"
+            - name: PUBLIC_URL                  # адрес insight в браузере
+              value: https://insight.example.com
+            - name: AUTH_OIDC_ISSUER_URL        # https://<keycloak>/realms/<realm>
+              value: https://keycloak.example.com/realms/main
+            - name: AUTH_OIDC_CLIENT_ID
+              value: insight
+            - name: AUTH_READ_ROLES
+              value: gatekeeper:insight-get
+            - name: AUTH_WRITE_ROLES
+              value: gatekeeper:insight-edit
+            - name: AUTH_ADMIN_ROLES
+              value: gatekeeper:insight-admin
+            - name: STATE_MANAGER_TOKEN         # только если в state-manager AUTH_ENABLED=true
+              valueFrom:
+                secretKeyRef: { name: insight-state-manager, key: token }
+          envFrom:
+            - secretRef:
+                name: insight-auth
+```
+
+**5. Gatekeeper.** Если UI раньше закрывал gatekeeper, уберите его: insight теперь проверяет вход и роли сам. Если gatekeeper остаётся, пропустите через него без проверки `/login`, `/auth/*`, `/assets/*` и `/mcp`.
+
+**6. Проверка.**
+- В журнале при старте: `"msg":"login enabled"` с issuer и ролями.
+- Открытие insight перенаправляет на `/login` с кнопкой «Продолжить через SSO».
+- После входа в журнале появляется `"msg":"auth: login"` с полями `access` и `roles`. Если `access` равен `none`, сверьте `roles` с `AUTH_*_ROLES`.
+
+### 6. Токены для MCP
+
+Необязательный шаг. Он включает `/mcp` для AI-агентов. От входа через Keycloak он не зависит. Подробности — в разделе [MCP для AI-агентов](#mcp-для-ai-агентов).
+
+**1. Токены.** Токен на чтение и токен на чтение и запись:
+
+```bash
+kubectl -n state-manager create secret generic insight-mcp \
+  --from-literal=MCP_READ_TOKEN="$(openssl rand -hex 32)" \
+  --from-literal=MCP_WRITE_TOKEN="$(openssl rand -hex 32)"
+```
+
+Достаточно одного из двух. Например, только `MCP_READ_TOKEN`, если агентам не нужно ничего менять.
+
+**2. Переменные в Deployment:**
+
+```yaml
+          envFrom:
+            - secretRef:
+                name: insight-mcp
+```
+
+Если в state-manager `AUTH_ENABLED=true`, задайте также `STATE_MANAGER_TOKEN` (см. шаг 5): с ним MCP обращается к state-manager.
+
+**3. Проверка.** В журнале при старте `mcp_read_tokens` и `mcp_write_tokens` больше нуля. Запрос со списком инструментов:
+
+```bash
+curl -s https://insight.example.com/mcp \
+  -H "Authorization: Bearer $MCP_READ_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+С токеном на чтение в ответе три инструмента (`search_resources`, `list_values`, `get_resource`), с токеном на запись — шесть.
+
+**4. Подключение агента** (Claude Code):
+
+```bash
+claude mcp add --transport http insight https://insight.example.com/mcp \
+  --header "Authorization: Bearer $MCP_READ_TOKEN"
+```
+
+**Смена токена без простоя:** задайте старый и новый токен через запятую (`MCP_READ_TOKEN=old,new`), переключите агентов на новый и уберите старый.
+
 ## Параметры
 
 Все параметры задаются переменными окружения.
