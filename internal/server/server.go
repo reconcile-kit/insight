@@ -3,6 +3,7 @@
 //   - /insight/v1/*         complex read queries, served directly from the DB (read-only)
 //   - /api/v1/groups/*      single-resource GET and all writes, proxied to state-manager as is
 //   - /mcp                  MCP endpoint for AI agents (own bearer tokens, see internal/mcpserver)
+//   - /auth/*, /login       OIDC login (when enabled, everything else needs a session)
 //   - everything else       the embedded SPA
 package server
 
@@ -21,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/reconcile-kit/insight/internal/auth"
 	"github.com/reconcile-kit/insight/internal/query"
 	"github.com/reconcile-kit/insight/internal/store"
 )
@@ -37,13 +39,28 @@ type Config struct {
 	Log             *slog.Logger
 	// MCP serves /mcp; nil answers 404.
 	MCP http.Handler
+	// Auth enables OIDC login and per-level access checks; nil keeps insight open.
+	Auth *auth.Auth
+	// StateManagerToken replaces the caller's Authorization on proxied calls
+	// when Auth is on: insight has already authorized the user itself.
+	StateManagerToken string
 }
 
 const maxBody = 1 << 20
 
 func New(cfg Config, db Reader) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, requestLogger(cfg.Log), middleware.Recoverer)
+	r.Use(middleware.RequestID, middleware.RealIP, requestLogger(cfg.Log), middleware.Recoverer, csrf)
+	if cfg.Auth != nil {
+		r.Use(guard(cfg.Auth))
+		r.Get("/auth/login", cfg.Auth.Login)
+		r.Get("/auth/callback", cfg.Auth.Callback)
+		r.Get("/auth/logout", cfg.Auth.Logout)
+	}
+	r.Get("/auth/me", me(cfg.Auth))
+	r.Handle("/auth/*", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "login is disabled"})
+	}))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
@@ -67,7 +84,7 @@ func New(cfg Config, db Reader) http.Handler {
 
 	// Only the single-resource routes of state-manager are exposed; its list
 	// endpoint is intentionally not reachable through insight.
-	proxy := newProxy(cfg.StateManagerURL, cfg.Log)
+	proxy := newProxy(cfg.StateManagerURL, cfg.Log, cfg.Auth != nil, cfg.StateManagerToken)
 	r.Handle("/api/v1/groups/*", proxy)
 	r.Handle("/api/*", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not exposed by insight; use /insight/v1 for reads"})
@@ -154,7 +171,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func newProxy(target *url.URL, log *slog.Logger) http.Handler {
+// newProxy forwards to state-manager. Cookies (the insight session) never
+// leave insight. With login on, the caller's Authorization is replaced by the
+// service token; without it, it is passed through as is.
+func newProxy(target *url.URL, log *slog.Logger, authOn bool, token string) http.Handler {
 	if target == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "STATE_MANAGER_URL is not configured"})
@@ -164,6 +184,16 @@ func newProxy(target *url.URL, log *slog.Logger) http.Handler {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			pr.SetXForwarded()
+			pr.Out.Header.Del("Cookie")
+			if authOn {
+				pr.Out.Header.Del("Authorization")
+				if token != "" {
+					pr.Out.Header.Set("Authorization", "Bearer "+token)
+				}
+				if u := userFrom(pr.In.Context()); u != nil && u.Email != "" {
+					pr.Out.Header.Set("X-Forwarded-User", u.Email)
+				}
+			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Error("state-manager proxy", "path", r.URL.Path, "err", err)
@@ -207,10 +237,26 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 			}
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
-			next.ServeHTTP(ww, r)
-			log.Info("http", "method", r.Method, "path", r.URL.Path, "status", ww.Status(),
+			lu := &logUser{}
+			next.ServeHTTP(ww, r.WithContext(context.WithValue(r.Context(), logUserKey{}, lu)))
+			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", ww.Status(),
 				"bytes", ww.BytesWritten(), "duration_ms", time.Since(start).Milliseconds(),
-				"request_id", middleware.GetReqID(r.Context()))
+				"request_id", middleware.GetReqID(r.Context())}
+			if lu.v != "" {
+				attrs = append(attrs, "user", lu.v)
+			}
+			log.Info("http", attrs...)
 		})
 	}
 }
+
+// csrfProtection rejects cross-site state-changing requests (Origin /
+// Sec-Fetch-Site checks). /mcp is exempt: it is called by agents with a bearer
+// token, not by browsers with cookies.
+var csrfProtection = func() *http.CrossOriginProtection {
+	c := http.NewCrossOriginProtection()
+	c.AddInsecureBypassPattern("/mcp")
+	return c
+}()
+
+func csrf(next http.Handler) http.Handler { return csrfProtection.Handler(next) }

@@ -1,4 +1,4 @@
-.PHONY: stand stand-deps stand-down stand-logs seed web build test test-integration dev
+.PHONY: stand stand-auth stand-deps stand-down stand-logs seed web build test test-integration dev
 
 # The stand reuses reconcile-kit/e2e-tests: a sibling checkout (../e2e-tests) if
 # present, otherwise a clone in build/e2e-tests. Its *_REF variables
@@ -16,6 +16,13 @@ stand: stand-deps ## Поднять postgres + redis + state-manager (из e2e-t
 	@for i in $$(seq 1 30); do curl -sf http://127.0.0.1:57182/readyz >/dev/null && break; sleep 1; done
 	@echo "insight:       http://127.0.0.1:57182"
 	@echo "state-manager: $(STATE_MANAGER_URL)"
+
+stand-auth: stand-deps ## Стенд со входом через Keycloak (пользователи reader/editor/admin/nobody, пароль = имя)
+	docker compose -f docker-compose.yml -f docker-compose.auth.yml up -d --build
+	@for i in $$(seq 1 90); do curl -sf http://127.0.0.1:58180/realms/insight/.well-known/openid-configuration >/dev/null && break; sleep 1; done
+	@for i in $$(seq 1 30); do curl -sf http://127.0.0.1:57182/readyz >/dev/null && break; sleep 1; done
+	@echo "insight:  http://127.0.0.1:57182 (вход: reader/reader, editor/editor, admin/admin, nobody/nobody)"
+	@echo "keycloak: http://127.0.0.1:58180 (admin/admin)"
 
 stand-deps:
 	@if [ ! -f "$(E2E_TESTS_DIR)/docker-compose.yml" ]; then \

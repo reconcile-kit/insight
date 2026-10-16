@@ -1,0 +1,127 @@
+{
+  "realm": "insight",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "insight",
+      "name": "Insight",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "insight-local-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:57182/auth/callback",
+        "http://localhost:57182/auth/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://127.0.0.1:57182/*##http://localhost:57182/*",
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "gatekeeper",
+      "enabled": true,
+      "bearerOnly": true
+    }
+  ],
+  "roles": {
+    "client": {
+      "gatekeeper": [
+        {
+          "name": "insight-get"
+        },
+        {
+          "name": "insight-edit"
+        },
+        {
+          "name": "insight-admin"
+        }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "reader",
+      "enabled": true,
+      "email": "reader@example.com",
+      "emailVerified": true,
+      "firstName": "Reader",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "reader",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "gatekeeper": [
+          "insight-get"
+        ]
+      }
+    },
+    {
+      "username": "editor",
+      "enabled": true,
+      "email": "editor@example.com",
+      "emailVerified": true,
+      "firstName": "Editor",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "editor",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "gatekeeper": [
+          "insight-get",
+          "insight-edit"
+        ]
+      }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "gatekeeper": [
+          "insight-get",
+          "insight-edit",
+          "insight-admin"
+        ]
+      }
+    },
+    {
+      "username": "nobody",
+      "enabled": true,
+      "email": "nobody@example.com",
+      "emailVerified": true,
+      "firstName": "Nobody",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "nobody",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {}
+    }
+  ]
+}

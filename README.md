@@ -31,6 +31,7 @@ AI-агент (MCP) ┘       └─► state-manager          GET одного 
 | `POST /insight/v1/resources/search`, `POST /insight/v1/values` | Напрямую в PostgreSQL, **только чтение**. |
 | `GET/POST/PUT/DELETE /api/v1/groups/...` | Проксируется в state-manager без изменений. |
 | Остальные `/api/*`, включая list state-manager | `404`. |
+| `/login`, `/auth/*` | Вход через OIDC, если включён. Без сессии всё остальное, кроме `/mcp` и проб, недоступно. |
 | `POST /mcp` | MCP для AI-агентов, своя авторизация по токенам. Внутри та же логика: чтение из PostgreSQL, GET и запись через state-manager. См. [MCP](#mcp-для-ai-агентов). |
 
 - API state-manager не меняется и не получает тяжёлых запросов. Сложные фильтры выполняет insight на своей стороне.
@@ -51,6 +52,7 @@ AI-агент (MCP) ┘       └─► state-manager          GET одного 
 - Ресурс открывается в боковой панели, тело каждый раз заново загружается из state-manager. Редактор JSON с подсветкой, сохранение по `⌘S`.
 - Светлая и тёмная тема. Фильтры хранятся в URL, ссылкой можно поделиться.
 - MCP-сервер `/mcp` для AI-агентов с отдельными токенами на чтение и на запись.
+- Вход через Keycloak или другой OIDC-провайдер, уровни доступа «чтение / запись / удаление» по ролям.
 
 ## Установка
 
@@ -215,7 +217,23 @@ curl -s -X POST http://<insight>/insight/v1/resources/search -d '{"limit":1}'
 | `DATABASE_STATEMENT_TIMEOUT` | `15s` | Предельное время одного SQL-запроса. Если подсчёт total не укладывается, список всё равно возвращается, но без total, а в UI показывается «не удалось посчитать». |
 | `MCP_READ_TOKEN` | — | Токен MCP только на чтение. Можно несколько через запятую (для ротации). Минимум 16 символов. |
 | `MCP_WRITE_TOKEN` | — | Токен MCP на чтение и запись. Можно несколько через запятую. Не должен совпадать с токеном на чтение. Если не задан ни один `MCP_*_TOKEN`, `/mcp` отвечает `404`. |
-| `STATE_MANAGER_TOKEN` | — | Bearer-токен, с которым MCP обращается к state-manager (нужен, если там `AUTH_ENABLED=true`). UI его не использует. |
+| `STATE_MANAGER_TOKEN` | — | Bearer-токен для state-manager (нужен, если там `AUTH_ENABLED=true`). Его используют MCP и, при включённом входе, UI. |
+
+**Вход через OIDC** (см. [Доступ и авторизация](#доступ-и-авторизация))
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `AUTH_ENABLED` | `false` | `true` включает вход. Без сессии открывается только страница `/login`. |
+| `PUBLIC_URL` | — (обязательна) | Адрес, по которому пользователи открывают insight, например `https://insight.example.com`. Redirect URI — `PUBLIC_URL/auth/callback`. |
+| `AUTH_OIDC_ISSUER_URL` | — (обязательна) | Issuer провайдера, например `https://keycloak.example.com/realms/main`. |
+| `AUTH_OIDC_CLIENT_ID` | — (обязательна) | |
+| `AUTH_OIDC_CLIENT_SECRET` | — | Секрет клиента. Для public-клиента не нужен, PKCE используется всегда. |
+| `AUTH_SESSION_SECRET` | — (обязательна) | Ключ подписи сессии, не короче 32 символов: `openssl rand -hex 32`. Одинаковый на всех подах. Смена ключа завершает все сессии. |
+| `AUTH_SESSION_TTL` | `12h` | Время жизни сессии. Роли перечитываются при следующем входе. |
+| `AUTH_OIDC_SCOPES` | `openid,email,profile` | Добавьте `groups` или свой scope, если провайдер отдаёт группы только по нему. |
+| `AUTH_ROLES_CLAIM` | `groups` | Claim с ролями; путь через точку. Роли Keycloak (`realm_access`, `resource_access`) собираются всегда. |
+| `AUTH_READ_ROLES`, `AUTH_WRITE_ROLES`, `AUTH_ADMIN_ROLES` | — | Роли для чтения, записи и удаления, через запятую. Пустой список уровень не ограничивает. |
+| `AUTH_COOKIE_SECURE` | `true` для https | Флаг `Secure` у cookie. |
 
 В `DATABASE_URL` можно передавать [параметры libpq/pgx](https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#ParseConfig), например `sslrootcert=/certs/ca.pem` или `target_session_attrs=read-only`.
 
@@ -229,11 +247,77 @@ Insight работает через PgBouncer в режимах `session` и `tr
 
 ## Доступ и авторизация
 
-Своей аутентификации у insight нет. Пользователь, который открыл UI, может читать все ресурсы и через прокси менять их в state-manager. Поэтому:
+По умолчанию вход выключен: любой, кто открыл UI, может читать все ресурсы и менять их через state-manager. В таком режиме не публикуйте insight наружу, держите его во внутренней сети, за VPN или за auth-прокси.
 
-- **Не публикуйте insight наружу без аутентификации.** Ставьте его за Ingress с oauth2-proxy или OIDC, за VPN или во внутреннюю сеть.
-- **Если в state-manager включён `AUTH_ENABLED=true`.** Insight передаёт заголовок `Authorization` в state-manager без изменений, но сам браузер токен не добавляет. Чтобы запись работала, заголовок `Authorization: Bearer <JWT>` должен подставлять прокси перед insight, например oauth2-proxy с `--pass-authorization-header`. Тогда state-manager сам проверит права пользователя на запись. Без этого чтение работает, а создание, изменение и удаление вернут `401`.
-- **Чтение идёт напрямую из БД, и правила `auth_role_rules` state-manager к нему не применяются.** Любой, кто имеет доступ к insight, видит все ресурсы.
+### Вход через Keycloak или другой OIDC-провайдер
+
+С `AUTH_ENABLED=true` insight сам выполняет вход через OpenID Connect: Keycloak, Dex, Okta, Entra ID, Google и любой другой провайдер с discovery (`/.well-known/openid-configuration`). Отдельный прокси вроде gatekeeper или oauth2-proxy не нужен.
+
+- Неавторизованный пользователь попадает на страницу `/login` с кнопкой «Продолжить через SSO». После входа он возвращается туда, откуда пришёл, вместе с фильтрами из URL.
+- Используется authorization code flow с PKCE, `state` и `nonce`. После входа insight выдаёт свою cookie `insight_session` (HttpOnly, SameSite=Lax, подпись HMAC-SHA256) со сроком `AUTH_SESSION_TTL`. Токены провайдера не хранятся. Исключение — ID token в cookie с `Path=/auth`: он нужен только как `id_token_hint` при выходе.
+- «Выйти» завершает и сессию у провайдера (RP-initiated logout через `end_session_endpoint`), поэтому следующий вход снова спросит пароль.
+- Запросы на изменение с чужих сайтов отклоняются (проверка `Origin` и `Sec-Fetch-Site`).
+- `/mcp` не затрагивается: у него свои токены, см. [MCP](#mcp-для-ai-агентов).
+
+**Уровни доступа** задаются ролями из токена. Подходит любая из перечисленных ролей:
+
+| Уровень | Переменная | Что можно |
+|---|---|---|
+| чтение | `AUTH_READ_ROLES` | список, фильтры, открыть ресурс |
+| запись | `AUTH_WRITE_ROLES` | плюс создание и изменение |
+| удаление | `AUTH_ADMIN_ROLES` | плюс удаление |
+
+- Пустой список уровень не ограничивает. Если не задан ни один список, всем вошедшим доступно всё. Если задан только `AUTH_WRITE_ROLES`, все вошедшие читают, а меняют только эти роли.
+- Роль более высокого уровня включает нижние.
+- Без подходящей роли пользователь увидит страницу «нет доступа».
+- Кнопки, которые пользователю недоступны, в UI скрыты. Проверку всё равно делает сервер: запрос в обход UI получит `403`.
+
+**Откуда берутся роли:**
+- из claim `AUTH_ROLES_CLAIM` (по умолчанию `groups`): список или строка через запятую, можно указать путь через точку, например `realm_access.roles`;
+- роли Keycloak собираются всегда: роли realm — как есть, клиентские роли — в виде `<клиент>:<роль>`. Поэтому роли из конфигурации gatekeeper подходят без изменений: `AUTH_READ_ROLES=gatekeeper:insight-get`;
+- у групп Keycloak отбрасывается ведущий `/`.
+
+Если раньше UI закрывал gatekeeper, его можно убрать. Те же роли задаются переменными:
+
+```
+AUTH_READ_ROLES=gatekeeper:insight-get
+AUTH_WRITE_ROLES=gatekeeper:insight-edit
+AUTH_ADMIN_ROLES=gatekeeper:insight-admin
+```
+
+**Настройка клиента в Keycloak:**
+1. Clients → Create client: `Client ID` — `insight`, `Client authentication` — On, `Standard flow` — On.
+2. `Valid redirect URIs`: `https://insight.example.com/auth/callback`.
+3. `Valid post logout redirect URIs`: `https://insight.example.com/*`.
+4. Скопируйте секрет из вкладки Credentials в `AUTH_OIDC_CLIENT_SECRET`.
+5. Роли: используйте существующие клиентские роли (как `gatekeeper:insight-get`) или заведите свои. Чтобы клиентские роли другого клиента попали в токен insight, у клиента `insight` должен быть включён `Full scope allowed` (по умолчанию включён) или эти роли должны быть добавлены в его scope.
+
+```yaml
+          env:
+            - name: AUTH_ENABLED
+              value: "true"
+            - name: PUBLIC_URL
+              value: https://insight.example.com
+            - name: AUTH_OIDC_ISSUER_URL
+              value: https://keycloak.example.com/realms/main
+            - name: AUTH_OIDC_CLIENT_ID
+              value: insight
+            - name: AUTH_READ_ROLES
+              value: gatekeeper:insight-get
+            - name: AUTH_WRITE_ROLES
+              value: gatekeeper:insight-edit
+            - name: AUTH_ADMIN_ROLES
+              value: gatekeeper:insight-admin
+          envFrom:
+            - secretRef:
+                name: insight-auth   # AUTH_OIDC_CLIENT_SECRET, AUTH_SESSION_SECRET (openssl rand -hex 32)
+```
+
+**Запросы в state-manager** при включённом входе идут от имени insight: заголовок `Authorization` из браузера отбрасывается, вместо него подставляется `STATE_MANAGER_TOKEN`, если он задан. Это нужно, когда в state-manager `AUTH_ENABLED=true`. Email пользователя передаётся в `X-Forwarded-User` и пишется в журнал insight у каждого запроса (`"user"`). Cookie insight в state-manager не передаются ни в каком режиме.
+
+**Без встроенного входа**, за прокси: если перед insight стоит oauth2-proxy и в state-manager `AUTH_ENABLED=true`, прокси должен подставлять `Authorization: Bearer <JWT>` (oauth2-proxy с `--pass-authorization-header`). Insight передаст его в state-manager без изменений.
+
+**Чтение идёт напрямую из БД**, и правила `auth_role_rules` state-manager к нему не применяются. Ограничить чтение можно только ролями insight.
 
 ## MCP для AI-агентов
 
@@ -347,6 +431,17 @@ claude mcp add --transport http insight-local http://127.0.0.1:57182/mcp \
   --header "Authorization: Bearer local-read-token-0000"
 ```
 
+**Стенд со входом через Keycloak:** `make stand-auth`. Дополнительно поднимается Keycloak (http://127.0.0.1:58180, администратор `admin`/`admin`) с realm `insight` из `deploy/keycloak/insight-realm.json`. Пользователи (пароль совпадает с именем):
+
+| Пользователь | Роли | Доступ |
+|---|---|---|
+| `reader` | `gatekeeper:insight-get` | чтение |
+| `editor` | `+ gatekeeper:insight-edit` | чтение и запись |
+| `admin` | `+ gatekeeper:insight-admin` | всё, включая удаление |
+| `nobody` | — | страница «нет доступа» |
+
+Issuer — `http://host.docker.internal:58180/realms/insight`: этот адрес одинаково открывается из браузера и из контейнера insight. Docker Desktop прописывает `host.docker.internal` в `/etc/hosts`. Если записи нет, добавьте `127.0.0.1 host.docker.internal`.
+
 - **Версии зависимостей** задаются так же, как в e2e-tests, например `STATE_MANAGER_REF=pr/42 make stand` или `STATE_MANAGER_REF=../state-manager make stand`.
 - **Конфликт портов.** Стенд занимает те же порты, что `make e2e` в e2e-tests, поэтому одновременно их не запустить.
 
@@ -438,6 +533,12 @@ src/                фронтенд (React, Tailwind, CodeMirror)
 | Total показывает «не удалось посчитать» | `count(*)` не уложился в `DATABASE_STATEMENT_TIMEOUT`. Сузьте фильтры или увеличьте таймаут. |
 | `/readyz` — `503`: `unsupported startup parameter: statement_timeout` (или `default_transaction_read_only`) | Insight `0.3.0` за PgBouncer. Обновитесь до `0.3.1` и не передавайте серверные параметры в `DATABASE_URL`. |
 | `prepared statement "…" does not exist` | PgBouncer в режиме `transaction` без поддержки prepared statements, а в `DATABASE_URL` задан `default_query_exec_mode=cache_statement`. Уберите этот параметр. |
+| После входа — снова страница входа | Cookie не сохраняется: `AUTH_COOKIE_SECURE=true`, а insight открыт по http. Или `PUBLIC_URL` не совпадает с адресом в браузере. |
+| `/login?error=provider_unavailable` | Insight не может получить `AUTH_OIDC_ISSUER_URL/.well-known/openid-configuration`. Проверьте сетевой доступ из пода к провайдеру. |
+| `/login?error=exchange_failed` | Неверный `AUTH_OIDC_CLIENT_SECRET` или redirect URI клиента не совпадает с `PUBLIC_URL/auth/callback`. Подробности — в журнале insight. |
+| `/login?error=invalid_token` | Issuer в токене не совпадает с `AUTH_OIDC_ISSUER_URL`. Адрес провайдера должен быть одинаковым для браузера и для insight. |
+| Keycloak: `Invalid parameter: redirect_uri` | В клиенте не указан `PUBLIC_URL/auth/callback` в `Valid redirect URIs`. |
+| Вошёл, но «нет доступа» | В токене нет ни одной роли из `AUTH_*_ROLES`. Роли, которые пришли в токене, видны в журнале insight: `"msg":"auth: login"`, поле `roles`. |
 | `/mcp` — `404` `MCP is disabled` | Не задан ни `MCP_READ_TOKEN`, ни `MCP_WRITE_TOKEN`. |
 | `/mcp` — `401` | Неверный токен или нет заголовка `Authorization: Bearer …`. Если перед insight стоит auth-прокси и ответ — его страница входа, пропустите `/mcp` (см. [MCP](#mcp-для-ai-агентов)). |
 | Инструменты записи MCP возвращают `state-manager 401` | В state-manager включена авторизация, задайте `STATE_MANAGER_TOKEN`. |

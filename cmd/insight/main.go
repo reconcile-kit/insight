@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/reconcile-kit/insight/internal/auth"
 	"github.com/reconcile-kit/insight/internal/config"
 	"github.com/reconcile-kit/insight/internal/mcpserver"
 	"github.com/reconcile-kit/insight/internal/server"
@@ -58,13 +59,30 @@ func run(log *slog.Logger) error {
 		mcpHandler = mcpserver.Handler(mc, db, statemanager.New(cfg.StateManagerURL, cfg.StateManagerToken))
 	}
 
+	var authn *auth.Auth
+	if a := cfg.Auth; a != nil {
+		authn, err = auth.New(auth.Config{
+			IssuerURL: a.IssuerURL, ClientID: a.ClientID, ClientSecret: a.ClientSecret, Scopes: a.Scopes,
+			PublicURL: a.PublicURL, SessionSecret: a.SessionSecret, SessionTTL: a.SessionTTL, CookieSecure: a.CookieSecure,
+			RolesClaim: a.RolesClaim, ReadRoles: a.ReadRoles, WriteRoles: a.WriteRoles, AdminRoles: a.AdminRoles,
+			Log: log,
+		})
+		if err != nil {
+			return err
+		}
+		log.Info("login enabled", "issuer", a.IssuerURL, "client_id", a.ClientID, "public_url", a.PublicURL.String(),
+			"read_roles", a.ReadRoles, "write_roles", a.WriteRoles, "admin_roles", a.AdminRoles)
+	}
+
 	srv := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: server.New(server.Config{
-			StateManagerURL: cfg.StateManagerURL,
-			Static:          web.FS(),
-			Log:             log,
-			MCP:             mcpHandler,
+			StateManagerURL:   cfg.StateManagerURL,
+			Static:            web.FS(),
+			Log:               log,
+			MCP:               mcpHandler,
+			Auth:              authn,
+			StateManagerToken: cfg.StateManagerToken,
 		}, db),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

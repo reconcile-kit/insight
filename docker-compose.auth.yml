@@ -1,0 +1,33 @@
+# Login through Keycloak on the local stand: `make stand-auth`.
+# Local-only demo realm (deploy/keycloak/insight-realm.json): users reader,
+# editor, admin and nobody, password = user name.
+#
+# host.docker.internal makes the issuer URL the same for the browser (on the
+# host) and for insight (in a container), as OIDC requires.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://host.docker.internal:58180
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./deploy/keycloak/insight-realm.json:/opt/keycloak/data/import/insight-realm.json:ro
+    ports:
+      - "58180:8080"
+
+  insight:
+    environment:
+      AUTH_ENABLED: "true"
+      AUTH_OIDC_ISSUER_URL: http://host.docker.internal:58180/realms/insight
+      AUTH_OIDC_CLIENT_ID: insight
+      AUTH_OIDC_CLIENT_SECRET: insight-local-secret
+      AUTH_SESSION_SECRET: local-session-secret-0123456789abcdef
+      AUTH_READ_ROLES: gatekeeper:insight-get
+      AUTH_WRITE_ROLES: gatekeeper:insight-edit
+      AUTH_ADMIN_ROLES: gatekeeper:insight-admin
+      PUBLIC_URL: http://127.0.0.1:57182
+    extra_hosts:
+      - host.docker.internal:host-gateway

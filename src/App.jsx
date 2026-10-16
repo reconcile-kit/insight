@@ -7,6 +7,8 @@ import { Pagination } from "@/components/Pagination";
 import { ResourceDrawer } from "@/components/ResourceDrawer";
 import { Toaster, useToast } from "@/components/Toaster";
 import { Logo } from "@/components/Logo";
+import { UserMenu } from "@/components/UserMenu";
+import { useAuth, can } from "@/lib/auth";
 import { searchResources } from "@/lib/api";
 import { emptyState, readUrl, writeUrl, isJsonRowActive, JSON_OPS } from "@/lib/state";
 import { cn, fmtNum, hue } from "@/lib/utils";
@@ -81,6 +83,7 @@ function ActiveFilters({ state, onRemove, onClear }) {
 function Insight() {
   const toast = useToast();
   const [dark, toggleTheme] = useTheme();
+  const { access } = useAuth();
   const [applied, setApplied] = useState(readUrl);
   const [draft, setDraft] = useState(applied);
   const [result, setResult] = useState({ items: [], total: null });
@@ -280,10 +283,15 @@ function Insight() {
           <Button size="icon" variant="ghost" onClick={toggleTheme} title="Тема">
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </Button>
-          <div className="mx-1 h-5 w-px bg-line" />
-          <Button variant="primary" size="md" onClick={openCreate}>
-            <Plus size={15} /> Создать
-          </Button>
+          {can(access, "write") && (
+            <>
+              <div className="mx-1 h-5 w-px bg-line" />
+              <Button variant="primary" size="md" onClick={openCreate}>
+                <Plus size={15} /> Создать
+              </Button>
+            </>
+          )}
+          <UserMenu />
         </div>
       </header>
 

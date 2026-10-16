@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { JsonEditor } from "@/components/JsonEditor";
 import { KindChip, GroupLabel, LabelChip } from "@/components/Chips";
 import { useToast } from "@/components/Toaster";
+import { useAuth, can } from "@/lib/auth";
 import { getResource, updateResource, createResource, deleteResource } from "@/lib/api";
 import { cn, fmtDate, timeAgo } from "@/lib/utils";
 
@@ -25,6 +26,9 @@ function Meta({ label, children, title }) {
  */
 export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
   const toast = useToast();
+  const { access } = useAuth();
+  const canWrite = can(access, "write");
+  const canDelete = can(access, "admin");
   const isCreate = target?.mode === "create";
   const [data, setData] = useState(null);
   const [text, setText] = useState("");
@@ -255,26 +259,33 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
               <div className="font-mono text-xs opacity-90">{error}</div>
             </div>
           )}
-          {(data || isCreate) && <JsonEditor value={text} onChange={setText} onSave={save} />}
+          {(data || isCreate) && (
+            <JsonEditor value={text} onChange={setText} onSave={canWrite ? save : undefined} readOnly={!canWrite} />
+          )}
         </div>
 
         <footer className="flex items-center gap-2 border-t border-line px-5 py-3">
-          {!isCreate && (
+          {!isCreate && canDelete && (
             <Button variant="danger" onClick={remove} disabled={!data}>
               <Trash2 size={14} /> {confirmDelete ? "Точно удалить?" : "Удалить"}
             </Button>
           )}
           <div className="flex-1 text-xs text-faint">
             {dirty && !isCreate && <span className="text-warn">● Изменено</span>}
+            {!canWrite && <span>Только чтение</span>}
           </div>
-          <span className="hidden items-center gap-1 text-xs text-faint sm:flex">
-            <span className="kbd">⌘</span>
-            <span className="kbd">S</span>
-          </span>
-          <Button variant="primary" onClick={save} disabled={saving || (!isCreate && (!data || !dirty))}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {isCreate ? "Создать" : "Сохранить"}
-          </Button>
+          {canWrite && (
+            <>
+              <span className="hidden items-center gap-1 text-xs text-faint sm:flex">
+                <span className="kbd">⌘</span>
+                <span className="kbd">S</span>
+              </span>
+              <Button variant="primary" onClick={save} disabled={saving || (!isCreate && (!data || !dirty))}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {isCreate ? "Создать" : "Сохранить"}
+              </Button>
+            </>
+          )}
         </footer>
       </aside>
     </div>

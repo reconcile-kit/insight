@@ -27,6 +27,25 @@ type Config struct {
 	// StateManagerToken is sent to state-manager by the MCP tools (the UI
 	// proxy forwards the caller's own Authorization header instead).
 	StateManagerToken string
+
+	// Auth is nil when login is disabled (AUTH_ENABLED is not true).
+	Auth *Auth
+}
+
+// Auth is the OIDC login configuration, see internal/auth.
+type Auth struct {
+	IssuerURL     string
+	ClientID      string
+	ClientSecret  string
+	Scopes        []string
+	PublicURL     *url.URL
+	SessionSecret []byte
+	SessionTTL    time.Duration
+	CookieSecure  bool
+	RolesClaim    string
+	ReadRoles     []string
+	WriteRoles    []string
+	AdminRoles    []string
 }
 
 // minTokenLen keeps obviously guessable MCP tokens out.
@@ -78,7 +97,70 @@ func Load() (*Config, error) {
 		}
 	}
 	c.StateManagerToken = os.Getenv("STATE_MANAGER_TOKEN")
+
+	if c.Auth, err = loadAuth(); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+func loadAuth() (*Auth, error) {
+	enabled, err := strconv.ParseBool(env("AUTH_ENABLED", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("AUTH_ENABLED: %w", err)
+	}
+	if !enabled {
+		return nil, nil
+	}
+	a := &Auth{
+		IssuerURL:     os.Getenv("AUTH_OIDC_ISSUER_URL"),
+		ClientID:      os.Getenv("AUTH_OIDC_CLIENT_ID"),
+		ClientSecret:  os.Getenv("AUTH_OIDC_CLIENT_SECRET"),
+		Scopes:        list(env("AUTH_OIDC_SCOPES", "openid,email,profile")),
+		SessionSecret: []byte(os.Getenv("AUTH_SESSION_SECRET")),
+		RolesClaim:    env("AUTH_ROLES_CLAIM", "groups"),
+		ReadRoles:     list(os.Getenv("AUTH_READ_ROLES")),
+		WriteRoles:    list(os.Getenv("AUTH_WRITE_ROLES")),
+		AdminRoles:    list(os.Getenv("AUTH_ADMIN_ROLES")),
+	}
+	var missing []string
+	for _, v := range []struct{ k, v string }{
+		{"AUTH_OIDC_ISSUER_URL", a.IssuerURL}, {"AUTH_OIDC_CLIENT_ID", a.ClientID},
+		{"AUTH_SESSION_SECRET", string(a.SessionSecret)}, {"PUBLIC_URL", os.Getenv("PUBLIC_URL")},
+	} {
+		if v.v == "" {
+			missing = append(missing, v.k)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("AUTH_ENABLED=true requires %s", strings.Join(missing, ", "))
+	}
+	if len(a.SessionSecret) < 32 {
+		return nil, errors.New("AUTH_SESSION_SECRET must be at least 32 characters (e.g. openssl rand -hex 32)")
+	}
+	u, err := url.Parse(os.Getenv("PUBLIC_URL"))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("PUBLIC_URL must be an absolute URL, got %q", os.Getenv("PUBLIC_URL"))
+	}
+	a.PublicURL = u
+	if a.SessionTTL, err = time.ParseDuration(env("AUTH_SESSION_TTL", "12h")); err != nil {
+		return nil, fmt.Errorf("AUTH_SESSION_TTL: %w", err)
+	}
+	// Secure cookies by default whenever insight is served over https.
+	if a.CookieSecure, err = strconv.ParseBool(env("AUTH_COOKIE_SECURE", strconv.FormatBool(u.Scheme == "https"))); err != nil {
+		return nil, fmt.Errorf("AUTH_COOKIE_SECURE: %w", err)
+	}
+	return a, nil
+}
+
+func list(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // tokens reads a comma separated list of tokens (several allow rotation).
