@@ -85,10 +85,10 @@ No other privileges are needed.
 The image is built by GitHub Actions when a `v*` tag is pushed and published to Docker Hub for `linux/amd64` and `linux/arm64`:
 
 ```
-docker.io/dhnikolas/insight:<version>      # git tag v0.3.1 → image 0.3.1
+docker.io/dhnikolas/insight:<version>      # git tag v0.3.3 → image 0.3.3
 ```
 
-The Go backend with direct database reads starts at **0.3.0**; PgBouncer is supported from **0.3.1**. Images up to and including `0.2.1` are the old build: nginx proxies all of `/api` to state-manager, only `STATE_MANAGER_URL` is needed, and no database is used. Version list: [repository tags](https://github.com/reconcile-kit/insight/tags).
+The Go backend with direct database reads starts at **0.3.0**; PgBouncer is supported from **0.3.1**; sign-in with Keycloak/OIDC and the `/mcp` endpoint from **0.3.2**. Images up to and including `0.2.1` are the old build: nginx proxies all of `/api` to state-manager, only `STATE_MANAGER_URL` is needed, and no database is used. Version list: [repository tags](https://github.com/reconcile-kit/insight/tags).
 
 To build it yourself:
 
@@ -110,7 +110,7 @@ docker run -d --name insight -p 27182:27182 \
   -e DATABASE_PASSWORD='<password>' \
   -e DATABASE_NAME=state_manager \
   -e DATABASE_SSLMODE=require \
-  dhnikolas/insight:0.3.1
+  dhnikolas/insight:0.3.3
 ```
 
 **Kubernetes**
@@ -137,7 +137,7 @@ spec:
     spec:
       containers:
         - name: insight
-          image: dhnikolas/insight:0.3.1
+          image: dhnikolas/insight:0.3.3
           ports:
             - containerPort: 27182
           env:
