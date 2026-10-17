@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -9,15 +10,7 @@ const ACCESS = {
   admin: { label: "full access", cls: "bg-ok/15 text-ok" },
 };
 
-const initials = (s = "") =>
-  s
-    .split(/[\s.@_-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("") || "?";
-
-/** Avatar with the user's name, access level and logout. Hidden when login is off. */
+/** User button with the user's name, access level and logout. Hidden when login is off. */
 export function UserMenu() {
   const { auth, user, access } = useAuth();
   const [open, setOpen] = useState(false);
@@ -40,13 +33,9 @@ export function UserMenu() {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title={user.name}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent to-ok text-[11px] font-semibold text-white ring-2 ring-transparent transition hover:ring-accent/30"
-      >
-        {initials(user.name || user.email)}
-      </button>
+      <Button size="icon" variant="ghost" onClick={() => setOpen((o) => !o)} title={user.name || user.email}>
+        <User size={15} />
+      </Button>
       {open && (
         <div className="absolute right-0 top-10 z-50 w-64 rounded-xl border border-line bg-elevated p-3 shadow-float animate-in fade-in-0 zoom-in-95 duration-150">
           <div className="truncate text-sm font-medium text-fg">{user.name}</div>

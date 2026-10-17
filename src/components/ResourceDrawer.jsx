@@ -280,7 +280,7 @@ export function ResourceDrawer({ target, onClose, onChanged, onOpen }) {
                 <span className="kbd">⌘</span>
                 <span className="kbd">S</span>
               </span>
-              <Button variant="primary" onClick={save} disabled={saving || (!isCreate && (!data || !dirty))}>
+              <Button variant="primary" onClick={save} disabled={saving || (!isCreate && !data)}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 {isCreate ? "Create" : "Save"}
               </Button>

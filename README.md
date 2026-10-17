@@ -46,9 +46,9 @@ AI agent (MCP) ┘        └─► state-manager         GET a single resource,
 - Filters by group, kind, namespace and shard. Dropdown values come from the database, take the other filters into account, and are highlighted with the same colors as in the table.
 - Substring search by name.
 - Label selector: `app=nginx, tier!=db, env in (a,b), env notin (c), team, !legacy, app~ngi`.
-- Conditions on jsonb fields (`spec`, `status`, `annotations`, `finalizers`):
+- JSON filters on jsonb fields (`spec`, `status`, `annotations`, `finalizers`):
   - operators `= ≠ > ≥ < ≤ contains !contains regex in exists !exists`;
-  - combine conditions with AND / OR;
+  - combine filters with AND / OR;
   - the path is typed by hand: `resources.cpu`, `conditions[0].type`, `["app.kubernetes.io/name"]`.
 - Total count of matching resources, server-side sorting by clicking a column header, pagination.
 - Clicking a cell value or a label adds a filter. `Enter` in any field applies the filters.
@@ -201,7 +201,7 @@ Optional. Without it, sign-in is disabled and the UI is open to anyone with netw
 
 The client secret is on the Credentials tab.
 
-**2. Roles.** You can keep the gatekeeper roles (`gatekeeper:insight-get`, `insight-edit`, `insight-admin`) or create client roles on the `insight` client, such as `insight:read`, `insight:write`, `insight:admin`, and assign them to users or groups.
+**2. Roles.** You can keep the gatekeeper roles (`gatekeeper:insight-get`, `insight-edit`, `insight-admin`) or create client roles on the `insight` client, such as `insight:read`, `insight:write`, `insight:admin`, and assign them to users or groups. Step by step: [Granting access in Keycloak](#granting-access-in-keycloak).
 
 **3. Secret.**
 
@@ -415,6 +415,35 @@ AUTH_ADMIN_ROLES=gatekeeper:insight-admin
                 name: insight-auth   # AUTH_OIDC_CLIENT_SECRET, AUTH_SESSION_SECRET (openssl rand -hex 32)
 ```
 
+### Granting access in Keycloak
+
+**How it works:**
+1. The user clicks "Continue with SSO" and signs in to Keycloak.
+2. Keycloak returns tokens that list the user's roles: client roles in `resource_access`, realm roles in `realm_access`, groups in `groups` (if a mapper adds them).
+3. Insight collects them all (client roles as `<client>:<role>`) and compares them with `AUTH_READ_ROLES`, `AUTH_WRITE_ROLES` and `AUTH_ADMIN_ROLES`, case-insensitively. The highest matching level wins.
+4. The level is stored in the signed session cookie for `AUTH_SESSION_TTL` (12h by default). The server checks it on every request; the UI only hides what the user can't do (Create and Save from write, Delete for admin).
+
+**Assign a role to a user:**
+1. Keycloak admin console → your realm → Users → the user → **Role mapping** → **Assign role**.
+2. Switch the filter to **Filter by clients** and find the client, e.g. `gatekeeper`.
+3. Select `insight-get` (read), `insight-edit` (write) or `insight-admin` (delete) → **Assign**.
+
+**Or through groups**, which is easier to maintain:
+1. Groups → **Create group**, e.g. `insight-editors`.
+2. The group → **Role mapping** → **Assign role** → `gatekeeper:insight-edit`.
+3. Users → the user → **Groups** → **Join group**.
+
+Group role mappings end up in the token just like direct ones; insight needs no changes.
+
+**Keep in mind:**
+- **New roles apply on the next sign-in.** The level is in the session cookie, so the user has to sign out and sign in again (or wait for the session to expire). The same goes for revoking access: an existing insight session keeps its level until it expires, even if the user's Keycloak sessions are ended. To cut access off right away, change `AUTH_SESSION_SECRET` (this signs everyone out); a shorter `AUTH_SESSION_TTL` narrows the window.
+- **The role is in Keycloak but has no effect.** Check `"msg":"auth: login"` in the insight log: it shows the `roles` received and the resulting `access`. The usual cause is that the `insight` client has `Full scope allowed` turned off, so another client's roles (`gatekeeper`) are not in its token. Fix it in Clients → `insight` → **Client scopes** → `insight-dedicated` → **Scope**.
+- **Using Keycloak groups directly** (`AUTH_READ_ROLES=insight-readers`) requires a **Group Membership** mapper on the `insight` client with the token claim name `groups` and `Full group path` turned off. Without the mapper Keycloak does not put groups in the token.
+- **Set all three lists in production.** An empty list does not restrict its level: without `AUTH_ADMIN_ROLES`, everyone with write access can delete.
+- **MCP is separate.** Keycloak roles don't apply to `/mcp`; it uses `MCP_READ_TOKEN` and `MCP_WRITE_TOKEN`.
+
+The [local environment](#local-environment) with `make stand-auth` comes with a ready realm `insight`: users `reader`, `editor`, `admin` and `nobody` (password = user name) with these roles. The Keycloak admin console is at http://127.0.0.1:58180/admin (`admin`/`admin`).
+
 **Requests to state-manager** are made on behalf of insight when sign-in is enabled: the browser's `Authorization` header is dropped and `STATE_MANAGER_TOKEN` is used instead, if set. This is needed when state-manager has `AUTH_ENABLED=true`. The user's email is passed in `X-Forwarded-User` and written to the insight log for every request (`"user"`). Insight cookies are never forwarded to state-manager, in any mode.
 
 **Without built-in sign-in**, behind a proxy: if oauth2-proxy sits in front of insight and state-manager has `AUTH_ENABLED=true`, the proxy must set `Authorization: Bearer <JWT>` (oauth2-proxy with `--pass-authorization-header`). Insight forwards it to state-manager unchanged.
@@ -427,7 +456,7 @@ AUTH_ADMIN_ROLES=gatekeeper:insight-admin
 
 | Tool | What it does | Where it goes | Token |
 |---|---|---|---|
-| `search_resources` | Same as `POST /insight/v1/resources/search`: filters, labels, jsonb conditions, sorting, total. Same request body. | PostgreSQL, read only | read, write |
+| `search_resources` | Same as `POST /insight/v1/resources/search`: filters, labels, JSON filters, sorting, total. Same request body. | PostgreSQL, read only | read, write |
 | `list_values` | Same as `POST /insight/v1/values`. | PostgreSQL, read only | read, write |
 | `get_resource` | Full resource body. | state-manager `GET` | read, write |
 | `create_resource` | Create. | state-manager `POST` | write |
@@ -439,7 +468,7 @@ AUTH_ADMIN_ROLES=gatekeeper:insight-admin
 - `MCP_WRITE_TOKEN`: all six tools.
 - An invalid or missing token gets `401`. Every call is logged with the tool, access level and resource (`"msg":"mcp tool"`). Tokens themselves are never logged.
 
-Differences from the UI: a jsonb condition without a value (other than `exists`/`not_exists`) returns an error instead of being ignored, so an agent never silently gets a broader result; `update_resource` without `spec` is rejected so the spec isn't wiped.
+Differences from the UI: a JSON filter without a value (other than `exists`/`not_exists`) returns an error instead of being ignored, so an agent never silently gets a broader result; `update_resource` without `spec` is rejected so the spec isn't wiped.
 
 **Tokens** are best kept in a Secret:
 
@@ -496,7 +525,7 @@ Measured on 10 million resources (5 GB) with the state-manager indexes:
 
 | Query | Time |
 |---|---|
-| Page with no filters, by kind, group or a jsonb condition | 0–30 ms |
+| Page with no filters, by kind, group or a JSON filter | 0–30 ms |
 | Total count (`count(*)`) | 1–2 s per request |
 | Opening the group, kind or namespace dropdown (`DISTINCT`) | about 1.5 s |
 | Filter by a rare `shard_id` | up to 16 s, since there is no index on `shard_id` |
@@ -567,7 +596,7 @@ Layout:
 ```
 cmd/insight         entry point
 internal/config     environment variables
-internal/query      SQL building: filters, label selector, jsonb conditions (parameters only, no value concatenation)
+internal/query      SQL building: filters, label selector, JSON filters (parameters only, no value concatenation)
 internal/store      query execution in READ ONLY transactions
 internal/server     HTTP: /insight/v1, state-manager proxy, SPA serving
 web/                embedded frontend (web/dist is built by Vite)
@@ -641,6 +670,7 @@ Response: `{"values": [{"value": "Job", "group": "jobs.example.io"}]}`. The `gro
 | `/login?error=invalid_token` | The issuer in the token doesn't match `AUTH_OIDC_ISSUER_URL`. The provider address must be the same for the browser and for insight. |
 | Keycloak: `Invalid parameter: redirect_uri` | `PUBLIC_URL/auth/callback` is missing from the client's `Valid redirect URIs`. |
 | Signed in, but "No access" | The token has none of the roles from `AUTH_*_ROLES`. The roles received in the token are in the insight log: `"msg":"auth: login"`, field `roles`. |
+| A role was assigned or removed in Keycloak, but access hasn't changed | The level is stored in the session cookie. The user has to sign out and sign in again. See [Granting access in Keycloak](#granting-access-in-keycloak). |
 | `/mcp` returns `404` `MCP is disabled` | Neither `MCP_READ_TOKEN` nor `MCP_WRITE_TOKEN` is set. |
 | `/mcp` returns `401` | Wrong token or no `Authorization: Bearer …` header. If an auth proxy sits in front of insight and the response is its sign-in page, let `/mcp` through (see [MCP](#mcp-for-ai-agents)). |
 | MCP write tools return `state-manager 401` | state-manager has authorization enabled; set `STATE_MANAGER_TOKEN`. |

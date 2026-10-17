@@ -283,6 +283,7 @@ function Insight() {
           <Button size="icon" variant="ghost" onClick={toggleTheme} title="Theme">
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </Button>
+          <UserMenu />
           {can(access, "write") && (
             <>
               <div className="mx-1 h-5 w-px bg-line" />
@@ -291,7 +292,6 @@ function Insight() {
               </Button>
             </>
           )}
-          <UserMenu />
         </div>
       </header>
 

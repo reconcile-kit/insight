@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { JSON_OPS, JSON_ROOTS, newJsonRow, opNeedsValue } from "@/lib/state";
 
-/** Rows of `<root>.<path> <op> <value>` conditions over jsonb columns. */
+/** Rows of `<root>.<path> <op> <value>` filters over jsonb columns. */
 export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
   const [help, setHelp] = useState(false);
 
@@ -15,7 +15,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="label mb-0 flex items-center gap-1.5">
-          <Braces size={12} /> JSON conditions
+          <Braces size={12} /> JSON filters
           <button type="button" className="text-faint hover:text-fg" onClick={() => setHelp((h) => !h)} title="Path syntax">
             <HelpCircle size={12} />
           </button>
@@ -102,7 +102,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
             type="button"
             onClick={() => remove(r.id)}
             className="absolute -right-2 -top-2 hidden h-5 w-5 items-center justify-center rounded-full border border-line bg-elevated text-faint hover:text-danger group-hover:flex"
-            title="Remove condition"
+            title="Remove filter"
           >
             <X size={11} />
           </button>
@@ -114,7 +114,7 @@ export function JsonFilterBuilder({ rows, match, onChange, onMatchChange }) {
         onClick={() => onChange([...rows, newJsonRow()])}
         className="flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line text-xs text-muted transition-colors hover:border-accent/50 hover:text-accent"
       >
-        <Plus size={13} /> Condition
+        <Plus size={13} /> Filter
       </button>
     </div>
   );

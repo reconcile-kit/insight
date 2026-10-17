@@ -145,7 +145,7 @@ resource_group / namespace / kind / name, each with shard_id, labels, annotation
 spec (desired state, written by users) and status (observed state, written by controllers).
 version > current_version means the spec change is not reconciled yet (pending).
 
-Use search_resources to find resources (filters, label selector, conditions on any JSON field of
+Use search_resources to find resources (filters, label selector, filters on any JSON field of
 spec/status/annotations/finalizers, sorting, paging, total count). Use list_values to discover
 existing groups, kinds, namespaces and shards. search_resources returns only metadata; call
 get_resource for the full body with spec and status.`
@@ -173,7 +173,7 @@ func (t *tools) server(access Access, version string) *mcp.Server {
 
 	ro := &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: ptr(false)}
 	addTool(t, s, access, &mcp.Tool{Name: "search_resources", Title: "Search resources", Annotations: ro,
-		Description: "Find resources with filters, a label selector and conditions on JSON fields; " +
+		Description: "Find resources with filters, a label selector and filters on JSON fields; " +
 			"returns one page of metadata (no spec/status) and the total count. " +
 			"Same request as POST /insight/v1/resources/search."}, t.search)
 	addTool(t, s, access, &mcp.Tool{Name: "list_values", Title: "List distinct values", Annotations: ro,
@@ -249,8 +249,8 @@ type SortIn struct {
 type SearchIn struct {
 	Filters   FiltersIn      `json:"filters,omitempty"`
 	Labels    string         `json:"labels,omitempty" jsonschema:"label selector, comma separated terms: app=nginx, tier!=db, env in (a,b), env notin (c), key, !key, app~ngi (substring)"`
-	JSON      []JSONFilterIn `json:"json,omitempty" jsonschema:"conditions on JSON fields of spec/status/annotations/finalizers"`
-	JSONMatch string         `json:"json_match,omitempty" jsonschema:"all (default): every JSON condition must hold; any: at least one of them"`
+	JSON      []JSONFilterIn `json:"json,omitempty" jsonschema:"filters on JSON fields of spec/status/annotations/finalizers"`
+	JSONMatch string         `json:"json_match,omitempty" jsonschema:"all (default): every JSON filter must match; any: at least one of them"`
 	Sort      SortIn         `json:"sort,omitempty"`
 	Limit     int            `json:"limit,omitempty" jsonschema:"page size, default 100, max 1000"`
 	Offset    int            `json:"offset,omitempty" jsonschema:"number of matches to skip"`
