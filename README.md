@@ -46,9 +46,9 @@ AI agent (MCP) ┘        └─► state-manager         GET a single resource,
 - Filters by group, kind, namespace and shard. Dropdown values come from the database, take the other filters into account, and are highlighted with the same colors as in the table.
 - Substring search by name.
 - Label selector: `app=nginx, tier!=db, env in (a,b), env notin (c), team, !legacy, app~ngi`.
-- Conditions on jsonb fields (`spec`, `status`, `annotations`, `finalizers`):
+- JSON filters on jsonb fields (`spec`, `status`, `annotations`, `finalizers`):
   - operators `= ≠ > ≥ < ≤ contains !contains regex in exists !exists`;
-  - combine conditions with AND / OR;
+  - combine filters with AND / OR;
   - the path is typed by hand: `resources.cpu`, `conditions[0].type`, `["app.kubernetes.io/name"]`.
 - Total count of matching resources, server-side sorting by clicking a column header, pagination.
 - Clicking a cell value or a label adds a filter. `Enter` in any field applies the filters.
@@ -427,7 +427,7 @@ AUTH_ADMIN_ROLES=gatekeeper:insight-admin
 
 | Tool | What it does | Where it goes | Token |
 |---|---|---|---|
-| `search_resources` | Same as `POST /insight/v1/resources/search`: filters, labels, jsonb conditions, sorting, total. Same request body. | PostgreSQL, read only | read, write |
+| `search_resources` | Same as `POST /insight/v1/resources/search`: filters, labels, JSON filters, sorting, total. Same request body. | PostgreSQL, read only | read, write |
 | `list_values` | Same as `POST /insight/v1/values`. | PostgreSQL, read only | read, write |
 | `get_resource` | Full resource body. | state-manager `GET` | read, write |
 | `create_resource` | Create. | state-manager `POST` | write |
@@ -439,7 +439,7 @@ AUTH_ADMIN_ROLES=gatekeeper:insight-admin
 - `MCP_WRITE_TOKEN`: all six tools.
 - An invalid or missing token gets `401`. Every call is logged with the tool, access level and resource (`"msg":"mcp tool"`). Tokens themselves are never logged.
 
-Differences from the UI: a jsonb condition without a value (other than `exists`/`not_exists`) returns an error instead of being ignored, so an agent never silently gets a broader result; `update_resource` without `spec` is rejected so the spec isn't wiped.
+Differences from the UI: a JSON filter without a value (other than `exists`/`not_exists`) returns an error instead of being ignored, so an agent never silently gets a broader result; `update_resource` without `spec` is rejected so the spec isn't wiped.
 
 **Tokens** are best kept in a Secret:
 
@@ -496,7 +496,7 @@ Measured on 10 million resources (5 GB) with the state-manager indexes:
 
 | Query | Time |
 |---|---|
-| Page with no filters, by kind, group or a jsonb condition | 0–30 ms |
+| Page with no filters, by kind, group or a JSON filter | 0–30 ms |
 | Total count (`count(*)`) | 1–2 s per request |
 | Opening the group, kind or namespace dropdown (`DISTINCT`) | about 1.5 s |
 | Filter by a rare `shard_id` | up to 16 s, since there is no index on `shard_id` |
@@ -567,7 +567,7 @@ Layout:
 ```
 cmd/insight         entry point
 internal/config     environment variables
-internal/query      SQL building: filters, label selector, jsonb conditions (parameters only, no value concatenation)
+internal/query      SQL building: filters, label selector, JSON filters (parameters only, no value concatenation)
 internal/store      query execution in READ ONLY transactions
 internal/server     HTTP: /insight/v1, state-manager proxy, SPA serving
 web/                embedded frontend (web/dist is built by Vite)
